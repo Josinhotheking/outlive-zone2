@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Outlive Zone 2 Challenge</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>html,body,#root{height:100%}</style>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+      // ========================= CONFIG =========================
+      const CONFIG = {
+        participants: [
+          { name: "Jos", pin: "1111" },
+          { name: "Tom", pin: "2222" },
+          { name: "Gerben Jan", pin: "3333" },
+        ],
+        goals: { Easy: 1750, Medium: 2100, Hard: 2500 },
+        GAS_WEB_APP_URL: "", // vul dit in als je Google Apps Script gebruikt
+      };
+
+      // ========================= UTILITIES =========================
+      const YMD = (d) => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return `${y}-${m}-${day}`;
+      };
+      const fromYMD = (s) => new Date(`${s}T00:00:00`);
+
+      function currentChallengeRange() {
+        const year = new Date().getFullYear();
+        const start = new Date(`${year}-11-01T00:00:00`);
+        const end = new Date(`${year}-12-31T00:00:00`);
+        return { start, end };
+      }
+      function enumerateDays(start, end) {
+        const out = [];
+        const d = new Date(start);
+        while (d <= end) {
+          out.push(YMD(d));
+          d.setDate(d.getDate() + 1);
+        }
+        return out; // 61 dagen
+      }
+      function radialStyle() {
+        return {
+          background:
+            "radial-gradient(1200px circle at 50% 20%, rgba(255, 255, 255, 1) 0%, rgba(255,255,255,1) 25%, rgba(210,236,255,0.9) 38%, rgba(232,249,225,0.85) 52%, rgba(255,238,246,0.85) 66%, rgba(255,255,255,1) 100%)",
+          minHeight: "100vh",
+        };
+      }
+      const classNames = (...a) => a.filter(Boolean).join(" ");
+
+      const QUOTES = [
+        "I don't stop when I'm tired, I stop when I'm done.",
+        "When you think that you are done, you're only 40% into what your body's capable of doing.",
+        "You are in danger of living a life so comfortable and soft that you will die without ever realizing your true potential.",
+        "Pain unlocks a secret doorway in the mind, one that leads to both peak performance and beautiful silence.",
+        "The only way you gain mental toughness is to do things you're not happy doing.",
+        "We don't rise to the level of our expectations, we fall to the level of our training.",
+        "No one is going to come help you. No one is coming to save you.",
+        "You have to build calluses on your brain just like how you build calluses on your hands. Callus your mind through pain and suffering.",
+        "We're either getting better or we're getting worse.",
+        "Win the day, minute by minute.",
+        "Small steps, big engine.",
+        "Consistency beats intensity.",
+        "Show up, then keep going.",
+        "Discipline is a choice on repeat.",
+        "Make the hard thing normal.",
+      ];
+      const pickQuote = () => QUOTES[Math.floor(Math.random() * QUOTES.length)];
+
+      // ========================= STORAGE LAYER =========================
+      const LS_KEY = "outlive_zone2_data_v1";
+      const loadLocal = () => { try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch { return {}; } };
+      const saveLocal = (obj) => localStorage.setItem(LS_KEY, JSON.stringify(obj));
+
+      async function syncToSheet(payload){
+        if(!CONFIG.GAS_WEB_APP_URL) return {ok:true, offline:true};
+        try{
+          const res = await fetch(CONFIG.GAS_WEB_APP_URL, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(payload)});
+          return await res.json();
+        }catch(e){ return {ok:false, error:"Kon niet synchroniseren"}; }
+      }
+
+      // ========================= APP =========================
+      function App(){
+        const { start, end } = React.useMemo(() => currentChallengeRange(), []);
+        const days = React.useMemo(() => enumerateDays(start, end), [start, end]);
+
+        const [db, setDb] = React.useState(loadLocal());
+        const [user, setUser] = React.useState(null); // {name}
+        const [quote, setQuote] = React.useState("");
+
+        React.useEffect(() => saveLocal(db), [db]);
+
+        function ensureUser(name){ setDb(cur => { if(!cur[name]) cur[name] = { level:null, entries:{} }; return {...cur}; }); }
+        function setLevel(name, level){ setDb(cur => { const next={...cur}; next[name]=next[name]||{level:null,entries:{}}; if(!next[name].level) next[name].level = level; return next; }); }
+        function setMinutes(name, ymd, mins){ setDb(cur => { const next={...cur}; next[name]=next[name]||{level:null,entries:{}}; next[name].entries={...next[name].entries, [ymd]: mins}; return next; });
+          syncToSheet({action:"write", participant:name, date: ymd, minutes: Number(mins)});
+        }
+        function totalFor(name){ const rec=db[name]; if(!rec) return 0; return Object.values(rec.entries||{}).reduce((a,b)=> a + (parseInt(b||0,10)||0), 0); }
+        function goalFor(name){ const rec=db[name]; if(!rec||!rec.level) return 0; return CONFIG.goals[rec.level]; }
+        function planUntilDay(goal, totalDays, ymd, allDays){ const idx = allDays.indexOf(ymd) + 1; const perDay = goal / totalDays; return Math.round(perDay * idx); }
+        function planUntilToday(name){ const rec=db[name]; if(!rec||!rec.level) return 0; const goal=CONFIG.goals[rec.level]; const today=YMD(new Date()); let idx = days.indexOf(today)+1; if(idx<0) idx=0; if(idx>days.length) idx=days.length; const perDay = goal / days.length; return Math.round(perDay * idx); }
+
+        const leaderboard = React.useMemo(() => CONFIG.participants.map(p => { const goal=goalFor(p.name); const sum=totalFor(p.name); const pct=goal?Math.min(100, Math.round((sum/goal)*100)):0; const onPlan=goal? sum - planUntilToday(p.name):0; return {name:p.name, goal, sum, pct, onPlan}; }).sort((a,b)=> b.pct - a.pct || b.sum - a.sum), [db]);
+
+        function badgesFor(name){ const sum=totalFor(name); const acc=[]; if(sum>=750) acc.push("750 minuten"); if(sum>=1500) acc.push("1500 minuten"); if(sum>=1750) acc.push("1750 minuten"); return acc; }
+
+        return (
+          <div style={radialStyle()} className="text-slate-900">
+            <div className="max-w-6xl mx-auto px-4 py-8">
+              <Header />
+              {!user ? (
+                <LoginScreen onLogin={setUser} ensureUser={ensureUser} setLevel={setLevel} />
+              ) : (
+                <MainScreen
+                  user={user}
+                  setUser={setUser}
+                  days={days}
+                  db={db}
+                  setMinutes={setMinutes}
+                  totalFor={totalFor}
+                  goalFor={goalFor}
+                  planUntilDay={planUntilDay}
+                  planUntilToday={planUntilToday}
+                  exportCSV={(n)=>exportCSV(n, db, days, planUntilDay, CONFIG)}
+                  leaderboard={leaderboard}
+                  badgesFor={badgesFor}
+                  showQuote={(q)=>setQuote(q)}
+                />
+              )}
+              {quote && (
+                <div className="fixed inset-x-0 bottom-0 p-4">
+                  <div className="max-w-3xl mx-auto rounded-2xl bg-white/90 backdrop-blur shadow-lg p-4 text-center border border-slate-200">
+                    <p className="text-sm tracking-wide uppercase text-slate-600">Quote</p>
+                    <p className="mt-1 text-lg font-medium">{quote}</p>
+                    <button className="mt-3 px-4 py-2 rounded-xl bg-slate-900 text-white" onClick={()=>setQuote("")}>Sluiten</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      function Header(){
+        return (
+          <div className="mb-8 text-center">
+            <div className="text-xs tracking-widest text-slate-600">New York Times Bestseller</div>
+            <h1 className="text-4xl md:text-5xl font-semibold tracking-tight mt-1">Outlive Zone 2 Challenge</h1>
+            <p className="text-slate-600 mt-2">Wetenschap en kunst van lang leven in praktijk</p>
+          </div>
+        );
+      }
+
+      function LoginScreen({ onLogin, ensureUser, setLevel }){
+        const [name, setName] = React.useState(CONFIG.participants[0].name);
+        const [pin, setPin] = React.useState("");
+        const [level, setLevelLocal] = React.useState("Easy");
+        const [error, setError] = React.useState("");
+
+        function handleLogin(){
+          const p = CONFIG.participants.find(x => x.name === name);
+          if(!p || p.pin !== pin){ setError("Verkeerde pincode"); return; }
+          ensureUser(name);
+          setLevel(name, level); // vastzetten bij eerste keer
+          onLogin({ name });
+        }
+
+        return (
+          <div className="max-w-3xl mx-auto grid md:grid-cols-2 gap-8 items-start">
+            <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-200">
+              <h2 className="text-2xl font-semibold">Inloggen</h2>
+              <div className="mt-4">
+                <label className="block text-sm">Deelnemer</label>
+                <select className="mt-1 w-full border rounded-xl px-3 py-2" value={name} onChange={(e)=>setName(e.target.value)}>
+                  {CONFIG.participants.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
+                </select>
+              </div>
+              <div className="mt-4">
+                <label className="block text-sm">Pincode</label>
+                <input className="mt-1 w-full border rounded-xl px-3 py-2" type="password" inputMode="numeric" value={pin} onChange={(e)=>setPin(e.target.value)} placeholder="Vier cijfers" />
+              </div>
+              <div className="mt-4">
+                <label className="block text-sm">Niveau</label>
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  {["Easy","Medium","Hard"].map(opt => (
+                    <button key={opt} className={classNames("px-3 py-2 rounded-xl border", level===opt?"bg-slate-900 text-white":"bg-white")} onClick={()=>setLevelLocal(opt)}>{opt}</button>
+                  ))}
+                </div>
+                <p className="text-xs text-slate-600 mt-1">Let op, je keuze is eenmalig en kan na de eerste inlog niet meer worden gewijzigd</p>
+              </div>
+              {error && <p className="mt-3 text-red-600">{error}</p>}
+              <button className="mt-6 w-full bg-slate-900 text-white rounded-xl py-3" onClick={handleLogin}>Bevestig en start, keuze wordt vastgezet</button>
+            </div>
+            <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-200">
+              <h3 className="text-xl font-semibold">Wat is Zone 2 volgens Peter Attia</h3>
+              <ul className="mt-3 text-sm space-y-2 text-slate-700 list-disc list-inside">
+                <li>Rustig intensief, je kunt nog praten in korte zinnen</li>
+                <li>Hartslag rond ventilatoire drempel een, vaak zestig tot zeventig procent van maximaal</li>
+                <li>Doel is mitochondriale conditie en vetverbranding verbeteren</li>
+                <li>Vormen, stevig wandelen, rustig fietsen, zwemmen, roeien</li>
+                <li>Regelmaat telt, liever vaak en rustig dan zelden en hard</li>
+              </ul>
+              <p className="mt-3 text-xs text-slate-600">Deze app telt alleen jouw minuten in dit bereik</p>
+            </div>
+          </div>
+        );
+      }
+
+      function MainScreen({ user, setUser, days, db, setMinutes, totalFor, goalFor, planUntilDay, planUntilToday, exportCSV, leaderboard, badgesFor, showQuote }){
+        const name = user.name;
+        const rec = db[name] || { level:null, entries:{} };
+        const goal = goalFor(name);
+        const total = totalFor(name);
+        const remaining = Math.max(0, goal - total);
+
+        return (
+          <div className="grid lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-6">
+              <Card>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-2xl font-semibold">Welkom {name}</h2>
+                    <p className="text-slate-600 text-sm">Doel {rec.level} {goal} minuten</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-3xl font-semibold">{total}</div>
+                    <div className="text-sm text-slate-600">minuten tot nu</div>
+                  </div>
+                </div>
+                <Progress value={goal?Math.min(100, Math.round((total/goal)*100)):0} />
+                <div className="grid grid-cols-3 gap-3 mt-3 text-center">
+                  <Stat label="Resteert" value={`${remaining}`} sub="minuten" />
+                  <Stat label="Plan tot vandaag" value={`${planUntilToday(name)}`} sub="minuten" />
+                  <Stat label="Verschil vs plan" value={`${total - planUntilToday(name)}`} sub="minuten" />
+                </div>
+                <Badges achieved={badgesFor(name)} />
+                <div className="mt-4 flex gap-2">
+                  <button className="px-3 py-2 rounded-xl bg-slate-900 text-white" onClick={()=>exportCSV(name)}>Exporteer CSV</button>
+                  <button className="px-3 py-2 rounded-xl border" onClick={()=>setUser(null)}>Uitloggen</button>
+                </div>
+              </Card>
+
+              <CalendarGrid days={days} entries={rec.entries} onEdit={(d,m)=>{ const minutes = Math.max(0, parseInt(m||0,10)); setMinutes(name, d, minutes); showQuote(pickQuote()); }} goal={goal} planUntilDay={(d)=>planUntilDay(goal, days.length, d, days)} />
+            </div>
+            <div className="space-y-6"><Leaderboard leaderboard={leaderboard} /></div>
+          </div>
+        );
+      }
+
+      function Card({children}){ return <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-200">{children}</div>; }
+      function Stat({label, value, sub}){ return (<div className="bg-slate-50 rounded-xl p-3"><div className="text-xs text-slate-600">{label}</div><div className="text-2xl font-semibold">{value}</div><div className="text-xs text-slate-600">{sub}</div></div>); }
+      function Progress({value}){ return (<div className="mt-4 h-3 w-full bg-slate-100 rounded-full"><div className="h-3 bg-slate-900 rounded-full transition-all" style={{width:`${value}%`}} title={`${value}%`} /></div>); }
+      function Badges({achieved}){ if(!achieved.length) return null; return (<div className="mt-4 flex flex-wrap gap-2">{achieved.map(b => <span key={b} className="px-3 py-1 rounded-full bg-slate-900 text-white text-xs">Badge {b}</span>)}</div>); }
+      function Leaderboard({leaderboard}){ return (<Card><h3 className="text-xl font-semibold mb-3 text-center">Leaderboard</h3><div className="grid grid-cols-12 gap-2 text-sm font-medium text-slate-600 mb-2"><div className="col-span-5">Deelnemer</div><div className="col-span-2 text-right">Totaal</div><div className="col-span-2 text-right">Doel</div><div className="col-span-3 text-right">% klaar</div></div><div className="space-y-2">{leaderboard.map(r => (<div key={r.name} className="grid grid-cols-12 gap-2 items-center"><div className="col-span-5 font-semibold">{r.name}</div><div className="col-span-2 text-right">{r.sum}</div><div className="col-span-2 text-right">{r.goal}</div><div className="col-span-3 text-right">{r.pct}%</div></div>))}</div></Card>); }
+
+      function CalendarGrid({ days, entries, onEdit, goal, planUntilDay }){
+        function dayCell(d){
+          const m = parseInt(entries[d] || 0, 10);
+          const onPlan = planUntilDay(d);
+          const cumUntil = days.filter(x => x <= d).reduce((acc, dd) => acc + (parseInt(entries[dd] || 0, 10) || 0), 0);
+          const status = goal ? cumUntil - onPlan : 0;
+          return (
+            <div key={d} className="bg-white rounded-xl border p-3 flex flex-col">
+              <div className="text-xs text-slate-600">{formatDateNL(d)}</div>
+              <input type="number" inputMode="numeric" className="mt-2 border rounded-lg px-2 py-1" value={m} onChange={(e)=>onEdit(d, e.target.value)} min={0} step={1} />
+              <div className="mt-2 text-xs text-slate-600">Op schema tot en met vandaag {onPlan} min</div>
+              <div className={classNames("text-xs mt-1", status >= 0 ? "text-green-700" : "text-red-600")}>Verschil {status}</div>
+            </div>
+          );
+        }
+        return (<Card><h3 className="text-xl font-semibold mb-1">Jouw 61 dagen</h3><p className="text-sm text-slate-600 mb-4">Dag 1 is 1 november, dag 61 is 31 december</p><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{days.map(d => dayCell(d))}</div></Card>);
+      }
+
+      function formatDateNL(ymd){ const d = fromYMD(ymd); return d.toLocaleDateString("nl-NL", { weekday:"short", day:"2-digit", month:"short" }); }
+
+      // CSV export per deelnemer
+      function exportCSV(name, db, days, planUntilDay, CONFIG){
+        const rec = db[name]; if(!rec) return;
+        const header = ["datum","deelnemer","minuten","cumulatief","doeltype","doel","plan_tot_vandaag","verschil_tot_plan","percentage_voltooid"];
+        let cum = 0;
+        const rows = days.map(d => { const m = parseInt(rec.entries[d] || 0, 10); cum += m; const goal = CONFIG.goals[rec.level] || 0; const plan = planUntilDay(goal, days.length, d, days); const pct = goal ? Math.round((cum / goal) * 100) : 0; const diff = cum - plan; return [d, name, m, cum, rec.level || "", goal, plan, diff, pct]; });
+        const csv = [header.join(",")].concat(rows.map(r => r.join(","))).join("
+");
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a"); a.href = url; a.download = `${name}_zone2_${new Date().toISOString().slice(0,10)}.csv`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById("root"));
+      root.render(<App />);
+    </script>
+  </body>
+</html>
