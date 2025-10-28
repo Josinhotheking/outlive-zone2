@@ -4,8 +4,6 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Outlive Zone 2 Challenge</title>
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -16,28 +14,21 @@
     <div id="root"></div>
 
     <script type="text/babel">
-      // ========================= CONFIG =========================
+      // ================== CONFIG ==================
       const CONFIG = {
         participants: [
           { name: "Jos", pin: "1111" },
           { name: "Tom", pin: "2222" },
-          { name: "Gerben Jan", pin: "3333" }
+          { name: "Gerben Jan", pin: "3333" },
         ],
         goals: { Easy: 1750, Medium: 2100, Hard: 2500 },
-        GAS_WEB_APP_URL: "" // optioneel, laat leeg voor volledig webbased
+        GAS_WEB_APP_URL: "",
       };
 
-      // ========================= UTILITIES =========================
-      const classNames = (...a) => a.filter(Boolean).join(" ");
-      const YMD = d => {
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, "0");
-        const day = String(d.getDate()).padStart(2, "0");
-        return `${y}-${m}-${day}`;
-      };
+      // ================== HELPERS ==================
+      const YMD = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
       const fromYMD = s => new Date(`${s}T00:00:00`);
-      const todayYMD = () => YMD(new Date());
-      const isFuture = ymd => ymd > todayYMD();
+      const isFuture = d => fromYMD(d) > new Date();
 
       function currentChallengeRange(){
         const year = new Date().getFullYear();
@@ -45,175 +36,101 @@
         const end   = new Date(`${year}-12-31T00:00:00`);
         return { start, end };
       }
-      function enumerateDays(start, end){
-        const out = [];
-        const d = new Date(start);
-        while(d <= end){ out.push(YMD(d)); d.setDate(d.getDate() + 1); }
-        return out; // 61 dagen
+      function enumerateDays(start,end){
+        const arr=[]; const d=new Date(start);
+        while(d<=end){ arr.push(YMD(d)); d.setDate(d.getDate()+1); }
+        return arr;
       }
+
       function radialStyle(){
-        return {
-          background:
-            "radial-gradient(1200px circle at 50% 20%, rgba(255,255,255,1) 0%, rgba(255,255,255,1) 25%, rgba(210,236,255,0.9) 38%, rgba(232,249,225,0.85) 52%, rgba(255,238,246,0.85) 66%, rgba(255,255,255,1) 100%)",
-          minHeight: "100vh"
+        return { background:
+          "radial-gradient(1200px circle at 50% 20%, rgba(255,255,255,1) 0%, rgba(255,255,255,1) 25%, rgba(210,236,255,0.9) 38%, rgba(232,249,225,0.85) 52%, rgba(255,238,246,0.85) 66%, rgba(255,255,255,1) 100%)",
+          minHeight:"100vh"
         };
       }
-      function formatDateNL(ymd){
-        const d = fromYMD(ymd);
-        return d.toLocaleDateString("nl-NL", { weekday:"short", day:"2-digit", month:"short" });
-      }
-      function weekOf(ymd){
-        const d = fromYMD(ymd);
-        const day = (d.getDay()+6)%7; // maandag is 0
-        const monday = new Date(d); monday.setDate(d.getDate()-day);
-        const sunday = new Date(monday); sunday.setDate(monday.getDate()+6);
-        return { start: YMD(monday), end: YMD(sunday) };
-      }
 
-      // ========================= QUOTES =========================
-      const QUOTES = [
-        "I don't stop when I'm tired, I stop when I'm done.",
-        "When you think that you are done, you're only 40% into what your body's capable of doing.",
-        "You are in danger of living a life so comfortable and soft that you will die without ever realizing your true potential.",
-        "Pain unlocks a secret doorway in the mind, one that leads to both peak performance and beautiful silence.",
-        "The only way you gain mental toughness is to do things you're not happy doing.",
-        "We don't rise to the level of our expectations, we fall to the level of our training.",
-        "No one is going to come help you. No one is coming to save you.",
-        "You have to build calluses on your brain just like how you build calluses on your hands. Callus your mind through pain and suffering.",
-        "We're either getting better or we're getting worse.",
-        "Win the day, minute by minute.",
-        "Small steps, big engine.",
-        "Consistency beats intensity.",
-        "Show up, then keep going.",
-        "Discipline is a choice on repeat.",
-        "Make the hard thing normal."
+      const classNames = (...a)=>a.filter(Boolean).join(" ");
+      const QUOTES=[
+        "When you think you're done, you're only 40% done.",
+        "Stay disciplined when motivation fades.",
+        "You don't find toughness, you build it.",
+        "Every minute counts. Stay hard.",
+        "It’s you vs you, no one else.",
+        "Be uncommon amongst uncommon people.",
+        "Suffering is the true test of life."
       ];
-      const pickQuote = () => QUOTES[Math.floor(Math.random() * QUOTES.length)];
+      const pickQuote = ()=>QUOTES[Math.floor(Math.random()*QUOTES.length)];
 
-      // ========================= STORAGE LAYER =========================
-      const LS_KEY = "outlive_zone2_data_v1";
-      const loadLocal = () => { try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch { return {}; } };
-      const saveLocal = obj => localStorage.setItem(LS_KEY, JSON.stringify(obj));
+      const LS_KEY="outlive_zone2_data_v1";
+      const loadLocal=()=>{try{return JSON.parse(localStorage.getItem(LS_KEY))||{}}catch{return{}}};
+      const saveLocal=db=>localStorage.setItem(LS_KEY,JSON.stringify(db));
 
-      async function syncToSheet(payload){
-        if(!CONFIG.GAS_WEB_APP_URL) return {ok:true, offline:true};
-        try{
-          const res = await fetch(CONFIG.GAS_WEB_APP_URL, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(payload)});
-          return await res.json();
-        }catch(e){ return {ok:false, error:"Kon niet synchroniseren"}; }
-      }
-
-      // ========================= APP =========================
+      // ================== APP ==================
       function App(){
-        const { start, end } = React.useMemo(() => currentChallengeRange(), []);
-        const days = React.useMemo(() => enumerateDays(start, end), [start, end]);
+        const {start,end}=React.useMemo(()=>currentChallengeRange(),[]);
+        const days=React.useMemo(()=>enumerateDays(start,end),[start,end]);
+        const [db,setDb]=React.useState(loadLocal());
+        const [user,setUser]=React.useState(null);
+        const [quote,setQuote]=React.useState("");
+        const [pending,setPending]=React.useState(null);
 
-        const [db, setDb] = React.useState(loadLocal());
-        const [user, setUser] = React.useState(null);
-        const [quote, setQuote] = React.useState("");
-        const [pending, setPending] = React.useState(null); // { date, minutes }
+        React.useEffect(()=>saveLocal(db),[db]);
 
-        React.useEffect(() => saveLocal(db), [db]);
-
-        function ensureUser(name){
-          setDb(cur => {
-            if(!cur[name]) cur[name] = { level:null, entries:{} };
-            return {...cur};
-          });
+        function ensureUser(name){setDb(cur=>{if(!cur[name])cur[name]={level:null,entries:{}};return{...cur};});}
+        function setLevel(name,level){setDb(cur=>{const next={...cur};next[name]=next[name]||{level:null,entries:{}};if(!next[name].level)next[name].level=level;return next;});}
+        function setMinutes(name,ymd,mins){
+          setDb(cur=>{const next={...cur};next[name]=next[name]||{level:null,entries:{}};next[name].entries={...next[name].entries,[ymd]:mins};return next;});
         }
 
-        function setLevel(name, level){
-          setDb(cur => {
-            const next={...cur};
-            next[name]=next[name]||{level:null,entries:{}};
-            if(!next[name].level) next[name].level = level; // keuze vastzetten
-            return next;
-          });
+        function totalFor(n){const rec=db[n];if(!rec)return 0;return Object.values(rec.entries||{}).reduce((a,b)=>a+(parseInt(b||0,10)||0),0);}
+        function goalFor(n){const rec=db[n];if(!rec||!rec.level)return 0;return CONFIG.goals[rec.level];}
+        function planUntilDay(goal,total,ymd,all){const i=all.indexOf(ymd)+1;return Math.round((goal/total)*i);}
+        function planUntilToday(n){
+          const rec=db[n];if(!rec||!rec.level)return 0;
+          const goal=CONFIG.goals[rec.level];const today=YMD(new Date());
+          let idx=days.indexOf(today)+1;if(idx<0)idx=0;if(idx>days.length)idx=days.length;
+          return Math.round((goal/days.length)*idx);
         }
 
-        function setMinutes(name, ymd, mins){
-          setDb(cur => {
-            const next={...cur};
-            next[name]=next[name]||{level:null,entries:{}};
-            next[name].entries={...next[name].entries, [ymd]: mins};
-            return next;
-          });
-          syncToSheet({action:"write", participant:name, date: ymd, minutes: Number(mins)});
-        }
-
-        function totalFor(name){
-          const rec=db[name]; if(!rec) return 0;
-          return Object.values(rec.entries||{}).reduce((a,b)=> a + (parseInt(b||0,10)||0), 0);
-        }
-        function goalFor(name){
-          const rec=db[name]; if(!rec||!rec.level) return 0;
-          return CONFIG.goals[rec.level];
-        }
-        function planUntilDay(goal, totalDays, ymd, allDays){
-          const idx = allDays.indexOf(ymd) + 1;
-          const perDay = goal / totalDays;
-          return Math.round(perDay * idx);
-        }
-        function planUntilToday(name){
-          const rec=db[name]; if(!rec||!rec.level) return 0;
-          const goal=CONFIG.goals[rec.level];
-          const today=todayYMD();
-          let idx = days.indexOf(today) + 1;
-          if(idx < 0) idx = 0;
-          if(idx > days.length) idx = days.length;
-          const perDay = goal / days.length;
-          return Math.round(perDay * idx);
-        }
-
-        const leaderboard = React.useMemo(() =>
-          CONFIG.participants.map(p => {
-            const goal=goalFor(p.name);
-            const sum=totalFor(p.name);
-            const pct=goal?Math.min(100, Math.round((sum/goal)*100)):0;
-            const onPlan=goal? sum - planUntilToday(p.name):0;
-            return {name:p.name, goal, sum, pct, onPlan};
-          }).sort((a,b)=> b.pct - a.pct || b.sum - a.sum)
-        , [db]);
-
-        function badgesFor(name){
-          const sum=totalFor(name);
-          const acc=[];
-          if(sum>=750) acc.push("750 minuten");
-          if(sum>=1500) acc.push("1500 minuten");
-          if(sum>=1750) acc.push("1750 minuten");
-          return acc;
-        }
+        const leaderboard=React.useMemo(()=>CONFIG.participants.map(p=>{
+          const g=goalFor(p.name),s=totalFor(p.name);
+          const pct=g?Math.min(100,Math.round((s/g)*100)):0;
+          const onPlan=g?s-planUntilToday(p.name):0;
+          return{name:p.name,goal:g,sum:s,pct,onPlan};
+        }).sort((a,b)=>b.pct-a.pct||b.sum-a.sum),[db]);
 
         return (
           <div style={radialStyle()} className="text-slate-900">
             <div className="max-w-6xl mx-auto px-4 py-8">
               <Header />
-              {!user ? (
-                <LoginScreen onLogin={setUser} ensureUser={ensureUser} setLevel={setLevel} />
-              ) : (
+              {!user?(
+                <LoginScreen onLogin={setUser} ensureUser={ensureUser} setLevel={setLevel}/>
+              ):(
                 <MainScreen
-                  user={user}
-                  setUser={setUser}
-                  days={days}
-                  db={db}
-                  setMinutes={setMinutes}
-                  totalFor={totalFor}
-                  goalFor={goalFor}
-                  planUntilDay={planUntilDay}
-                  planUntilToday={planUntilToday}
-                  exportCSV={(n)=>exportCSV(n, db, days, planUntilDay, CONFIG)}
+                  user={user} setUser={setUser}
+                  days={days} db={db} setMinutes={setMinutes}
+                  totalFor={totalFor} goalFor={goalFor}
+                  planUntilDay={planUntilDay} planUntilToday={planUntilToday}
                   leaderboard={leaderboard}
-                  badgesFor={badgesFor}
-                  showQuote={q => setQuote(q)}
-                  pending={pending}
-                  setPending={setPending}
+                  showConfirm={(d,m)=>setPending({date:d,minutes:m})}
+                />
+              )}
+              {pending && (
+                <ConfirmModal
+                  date={pending.date}
+                  minutes={pending.minutes}
+                  onConfirm={()=>{
+                    setMinutes(user.name,pending.date,pending.minutes);
+                    setPending(null);
+                    setQuote(pickQuote());
+                  }}
+                  onCancel={()=>setPending(null)}
                 />
               )}
               {quote && (
                 <div className="fixed inset-x-0 bottom-0 p-4">
                   <div className="max-w-3xl mx-auto rounded-2xl bg-white/90 backdrop-blur shadow-lg p-4 text-center border border-slate-200">
-                    <p className="text-sm tracking-wide uppercase text-slate-600">Quote</p>
-                    <p className="mt-1 text-lg font-medium">{quote}</p>
+                    <p className="text-lg font-medium italic">{quote}</p>
                     <button className="mt-3 px-4 py-2 rounded-xl bg-slate-900 text-white" onClick={()=>setQuote("")}>Sluiten</button>
                   </div>
                 </div>
@@ -223,86 +140,60 @@
         );
       }
 
-      function Header(){
-        return (
-          <div className="mb-8 text-center">
-            <div className="text-xs tracking-widest text-slate-600">New York Times Bestseller</div>
-            <h1 className="text-4xl md:text-5xl font-semibold tracking-tight mt-1">Outlive Zone 2 Challenge</h1>
-            <p className="text-slate-600 mt-2">Wetenschap en kunst van lang leven in praktijk</p>
-          </div>
-        );
-      }
+      // ================== COMPONENTS ==================
+      const Header=()=>(
+        <div className="mb-8 text-center">
+          <div className="text-xs tracking-widest text-slate-600">Zone 2 Challenge</div>
+          <h1 className="text-4xl md:text-5xl font-semibold tracking-tight mt-1">Outlive Zone 2</h1>
+          <p className="text-slate-600 mt-2">November – December</p>
+        </div>
+      );
 
-      function LoginScreen({ onLogin, ensureUser, setLevel }){
-        const [name, setName] = React.useState(CONFIG.participants[0].name);
-        const [pin, setPin]   = React.useState("");
-        const [level, setLevelLocal] = React.useState("Easy");
-        const [error, setError] = React.useState("");
-
+      function LoginScreen({onLogin,ensureUser,setLevel}){
+        const [name,setName]=React.useState(CONFIG.participants[0].name);
+        const [pin,setPin]=React.useState("");
+        const [level,setLevelLocal]=React.useState("Easy");
+        const [error,setError]=React.useState("");
         function handleLogin(){
-          const p = CONFIG.participants.find(x => x.name === name);
-          if(!p || p.pin !== pin){ setError("Verkeerde pincode"); return; }
-          ensureUser(name);
-          setLevel(name, level);
-          onLogin({ name });
+          const p=CONFIG.participants.find(x=>x.name===name);
+          if(!p||p.pin!==pin){setError("Verkeerde pincode");return;}
+          ensureUser(name);setLevel(name,level);onLogin({name});
         }
-
         return (
-          <div className="max-w-4xl mx-auto grid md:grid-cols-2 gap-8 items-start">
+          <div className="max-w-3xl mx-auto grid md:grid-cols-2 gap-8">
             <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-200">
               <h2 className="text-2xl font-semibold">Inloggen</h2>
               <div className="mt-4">
                 <label className="block text-sm">Deelnemer</label>
                 <select className="mt-1 w-full border rounded-xl px-3 py-2" value={name} onChange={e=>setName(e.target.value)}>
-                  {CONFIG.participants.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
+                  {CONFIG.participants.map(p=><option key={p.name} value={p.name}>{p.name}</option>)}
                 </select>
               </div>
               <div className="mt-4">
                 <label className="block text-sm">Pincode</label>
-                <input className="mt-1 w-full border rounded-xl px-3 py-2" type="password" inputMode="numeric" value={pin} onChange={e=>setPin(e.target.value)} placeholder="Vier cijfers" />
+                <input className="mt-1 w-full border rounded-xl px-3 py-2" type="password" inputMode="numeric" value={pin} onChange={e=>setPin(e.target.value)} placeholder="Vier cijfers"/>
               </div>
               <div className="mt-4">
                 <label className="block text-sm">Niveau</label>
                 <div className="mt-2 grid grid-cols-3 gap-2">
-                  {["Easy","Medium","Hard"].map(opt => (
-                    <button
-                      key={opt}
-                      className={classNames("px-3 py-2 rounded-xl border", level===opt?"bg-slate-900 text-white":"bg-white")}
-                      onClick={()=>setLevelLocal(opt)}
-                    >
-                      {opt}
-                    </button>
+                  {["Easy","Medium","Hard"].map(opt=>(
+                    <button key={opt} className={classNames("px-3 py-2 rounded-xl border",level===opt?"bg-slate-900 text-white":"bg-white")} onClick={()=>setLevelLocal(opt)}>{opt}</button>
                   ))}
                 </div>
-                <p className="text-xs text-slate-600 mt-1">Let op, je keuze is eenmalig en kan na de eerste inlog niet meer worden gewijzigd</p>
-
-                {/* Doelen zichtbaar per niveau */}
-                <div className="mt-3 text-sm">
-                  <div className="rounded-xl border p-3 bg-slate-50">
-                    <div className="font-semibold">Doelen</div>
-                    <ul className="mt-1 space-y-1">
-                      <li>Easy, 1750 minuten</li>
-                      <li>Medium, 2100 minuten</li>
-                      <li>Hard, 2500 minuten</li>
-                    </ul>
-                  </div>
-                </div>
+                <p className="text-xs text-slate-600 mt-1">Let op, keuze is eenmalig en wordt vastgezet bij eerste inlog.</p>
               </div>
-
               {error && <p className="mt-3 text-red-600">{error}</p>}
-              <button className="mt-6 w-full bg-slate-900 text-white rounded-xl py-3" onClick={handleLogin}>Bevestig en start, keuze wordt vastgezet</button>
+              <button className="mt-6 w-full bg-slate-900 text-white rounded-xl py-3" onClick={handleLogin}>Bevestig en start</button>
             </div>
 
-            {/* Goggins tekst rechts */}
             <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-200">
-              <h3 className="text-xl font-semibold text-slate-900 mb-3">Your Contract with Yourself</h3>
-              <p className="text-sm leading-relaxed text-slate-700">
-                If you choose to stay hard you pick 2500 minutes. That is your contract with yourself.
-                No one will sign it for you. Zone 2 is not a hobby. It is a choice to stop being average.
-                It is 2500 minutes of silence where no one claps and no one cares.
-                Every step, every pedal stroke, every breath teaches you to control the mind that wants comfort.
-                You either build the engine or you stay soft. You either pay in sweat or you pay in regret.
-                You want to walk into 2026 sharp, lean, ready. Then earn it now.
+              <h3 className="text-xl font-semibold">Your Contract with Yourself</h3>
+              <p className="mt-3 text-sm text-slate-700 leading-relaxed">
+                If you choose to stay hard you pick 2500 minutes. That is your contract with yourself. 
+                No one will sign it for you. Zone 2 is not a hobby. It is a choice to stop being average. 
+                It is 2500 minutes of silence where no one claps and no one cares. Every step, every pedal stroke, 
+                every breath teaches you to control the mind that wants comfort. You either build the engine or you stay soft. 
+                You either pay in sweat or you pay in regret. You want to walk into 2026 sharp, lean, ready. Then earn it now. 
                 Every minute counts. Every session is a brick in the wall between you and weakness. Stay hard.
               </p>
             </div>
@@ -310,13 +201,11 @@
         );
       }
 
-      function MainScreen({ user, setUser, days, db, setMinutes, totalFor, goalFor, planUntilDay, planUntilToday, exportCSV, leaderboard, badgesFor, showQuote, pending, setPending }){
-        const name = user.name;
-        const rec = db[name] || { level:null, entries:{} };
-        const goal = goalFor(name);
-        const total = totalFor(name);
-        const remaining = Math.max(0, goal - total);
-
+      function MainScreen({user,setUser,days,db,setMinutes,totalFor,goalFor,planUntilDay,planUntilToday,leaderboard,showConfirm}){
+        const name=user.name;
+        const rec=db[name]||{level:null,entries:{}};
+        const goal=goalFor(name),total=totalFor(name),remaining=Math.max(0,goal-total);
+        const [allowFuture,setAllowFuture]=React.useState(false);
         return (
           <div className="grid lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-6">
@@ -324,235 +213,68 @@
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className="text-2xl font-semibold">Welkom {name}</h2>
-                    <p className="text-slate-600 text-sm">Doel {rec.level} {goal} minuten, keuze ligt vast</p>
+                    <p className="text-slate-600 text-sm">Doel {rec.level} {goal} minuten</p>
                   </div>
                   <div className="text-right">
                     <div className="text-3xl font-semibold">{total}</div>
                     <div className="text-sm text-slate-600">minuten tot nu</div>
                   </div>
                 </div>
-                <Progress value={goal?Math.min(100, Math.round((total/goal)*100)):0} />
+                <Progress value={goal?Math.min(100,Math.round((total/goal)*100)):0}/>
                 <div className="grid grid-cols-3 gap-3 mt-3 text-center">
-                  <Stat label="Resteert" value={`${remaining}`} sub="minuten" />
-                  <Stat label="Plan tot vandaag" value={`${planUntilToday(name)}`} sub="minuten" />
-                  <Stat label="Verschil vs plan" value={`${total - planUntilToday(name)}`} sub="minuten" />
+                  <Stat label="Resteert" value={remaining} sub="minuten"/>
+                  <Stat label="Plan tot vandaag" value={planUntilToday(name)} sub="minuten"/>
+                  <Stat label="Verschil vs plan" value={total - planUntilToday(name)} sub="minuten"/>
                 </div>
-                <Badges achieved={badgesFor(name)} />
-                <div className="mt-4 flex gap-2">
-                  <button className="px-3 py-2 rounded-xl bg-slate-900 text-white" onClick={()=>exportCSV(name)}>Exporteer CSV</button>
+                <div className="mt-4 flex gap-3 items-center">
                   <button className="px-3 py-2 rounded-xl border" onClick={()=>setUser(null)}>Uitloggen</button>
-                  <button className="px-3 py-2 rounded-xl border" onClick={()=>window.dispatchEvent(new CustomEvent("scroll-to-today"))}>Naar vandaag</button>
+                  <label className="flex items-center gap-2 text-sm ml-auto">
+                    <input type="checkbox" checked={allowFuture} onChange={e=>setAllowFuture(e.target.checked)}/>
+                    Override toekomstige dagen
+                  </label>
                 </div>
               </Card>
-
-              {/* Snelle invoer vandaag, stelt alleen pending in, opslag na bevestigen */}
-              <Card>
-                <QuickTodayInput
-                  today={todayYMD()}
-                  entries={rec.entries}
-                  onSave={(m)=> setPending({ date: todayYMD(), minutes: Math.max(0, parseInt(m||0,10)) })}
-                />
-              </Card>
-
-              {/* Agenda weergave met weken en bevestiging achteraf */}
-              <CalendarGrid
-                days={days}
-                entries={rec.entries}
-                onProposeChange={(d,m)=> setPending({ date:d, minutes: Math.max(0, parseInt(m||0,10)) })}
-                goal={goal}
-                planUntilDay={(d)=>planUntilDay(goal, days.length, d, days)}
-              />
-
-              {/* Bevestiging voor opslag, quote pas hierna */}
-              {pending && (
-                <Card>
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="text-sm">
-                      Bevestig minuten voor {formatDateNL(pending.date)}, geselecteerd {pending.minutes} minuten
-                    </div>
-                    <div className="flex gap-2">
-                      <button className="px-3 py-2 rounded-xl border" onClick={()=> setPending(null)}>Annuleren</button>
-                      <button
-                        className="px-3 py-2 rounded-xl bg-slate-900 text-white"
-                        onClick={()=>{
-                          setMinutes(name, pending.date, pending.minutes);
-                          setPending(null);
-                          showQuote(pickQuote());
-                        }}
-                      >
-                        Bevestig vandaag
-                      </button>
-                    </div>
-                  </div>
-                </Card>
-              )}
+              <CalendarGrid days={days} entries={rec.entries} onProposeChange={(d,m)=>showConfirm(d,m)} goal={goal} planUntilDay={(d)=>planUntilDay(goal,days.length,d,days)} allowFuture={allowFuture}/>
             </div>
-
-            <div className="space-y-6">
-              <Leaderboard leaderboard={leaderboard} />
-            </div>
+            <div className="space-y-6"><Leaderboard leaderboard={leaderboard}/></div>
           </div>
         );
       }
 
-      function Card({children}){ return <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-200">{children}</div>; }
-      function Stat({label, value, sub}){ return (<div className="bg-slate-50 rounded-xl p-3"><div className="text-xs text-slate-600">{label}</div><div className="text-2xl font-semibold">{value}</div><div className="text-xs text-slate-600">{sub}</div></div>); }
-      function Progress({value}){ return (<div className="mt-4 h-3 w-full bg-slate-100 rounded-full"><div className="h-3 bg-slate-900 rounded-full transition-all" style={{width:`${value}%`}} title={`${value}%`} /></div>); }
-      function Badges({achieved}){ if(!achieved.length) return null; return (<div className="mt-4 flex flex-wrap gap-2">{achieved.map(b => <span key={b} className="px-3 py-1 rounded-full bg-slate-900 text-white text-xs">Badge {b}</span>)}</div>); }
-      function Leaderboard({leaderboard}){ return (<Card><h3 className="text-xl font-semibold mb-3 text-center">Leaderboard</h3><div className="grid grid-cols-12 gap-2 text-sm font-medium text-slate-600 mb-2"><div className="col-span-5">Deelnemer</div><div className="col-span-2 text-right">Totaal</div><div className="col-span-2 text-right">Doel</div><div className="col-span-3 text-right">% klaar</div></div><div className="space-y-2">{leaderboard.map(r => (<div key={r.name} className="grid grid-cols-12 gap-2 items-center"><div className="col-span-5 font-semibold">{r.name}</div><div className="col-span-2 text-right">{r.sum}</div><div className="col-span-2 text-right">{r.goal}</div><div className="col-span-3 text-right">{r.pct}%</div></div>))}</div></Card>); }
+      const Card=({children})=><div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-200">{children}</div>;
+      const Stat=({label,value,sub})=>(<div className="bg-slate-50 rounded-xl p-3"><div className="text-xs text-slate-600">{label}</div><div className="text-2xl font-semibold">{value}</div><div className="text-xs text-slate-600">{sub}</div></div>);
+      const Progress=({value})=>(<div className="mt-4 h-3 w-full bg-slate-100 rounded-full"><div className="h-3 bg-slate-900 rounded-full transition-all" style={{width:`${value}%`}}/></div>);
+      const Leaderboard=({leaderboard})=>(<Card><h3 className="text-xl font-semibold mb-3 text-center">Leaderboard</h3>{leaderboard.map(r=>(<div key={r.name} className="flex justify-between text-sm py-1 border-b border-slate-100"><div>{r.name}</div><div>{r.sum}/{r.goal} ({r.pct}%)</div></div>))}</Card>);
 
-      function QuickTodayInput({ today, entries, onSave }){
-        const [val, setVal] = React.useState(entries[today] || "");
-        React.useEffect(()=>setVal(entries[today]||""), [today, entries]);
-        return (
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="text-sm text-slate-600">Vandaag {formatDateNL(today)}</div>
-            <input type="number" inputMode="numeric" min={0} step={1}
-              className="border rounded-lg px-2 py-1 w-28"
-              value={val}
-              onChange={e=>setVal(e.target.value)}
-            />
-            <button className="px-3 py-2 rounded-xl bg-slate-900 text-white" onClick={()=>onSave(val)}>Opslaan</button>
-          </div>
-        );
-      }
-
-      function CalendarGrid({ days, entries, onProposeChange, goal, planUntilDay }){
-        const today = todayYMD();
-
-        // groepeer per week
-        const weeks = React.useMemo(()=>{
-          const acc = [];
-          let cur = [];
-          let lastWeek = null;
-          for(const d of days){
-            const w = weekOf(d).start;
-            if(lastWeek === null) lastWeek = w;
-            if(w !== lastWeek){ acc.push({ weekStart:lastWeek, days:cur }); cur = []; lastWeek = w; }
-            cur.push(d);
-          }
-          if(cur.length) acc.push({ weekStart:lastWeek, days:cur });
-          return acc;
-        }, [days]);
-
-        // auto scroll naar vandaag en via knop
-        React.useEffect(()=>{
-          const handler = ()=>{
-            const el = document.querySelector(`[data-day="${today}"]`);
-            if(el) el.scrollIntoView({ behavior:"smooth", block:"center" });
-          };
-          handler();
-          window.addEventListener("scroll-to-today", handler);
-          return ()=>window.removeEventListener("scroll-to-today", handler);
-        }, [today]);
-
-        function WeekStrip(){
-          return (
-            <div className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-slate-200 mb-3">
-              <div className="overflow-x-auto">
-                <div className="flex gap-2 p-2">
-                  {weeks.map(w => (
-                    <button
-                      key={w.weekStart}
-                      className="px-3 py-2 rounded-xl border whitespace-nowrap"
-                      onClick={()=>{
-                        const el = document.querySelector(`[data-week="${w.weekStart}"]`);
-                        if(el) el.scrollIntoView({ behavior:"smooth", block:"start" });
-                      }}
-                    >
-                      Week van {formatDateNL(w.weekStart)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          );
-        }
-
-        function DayRow({ d }){
-          const m = parseInt(entries[d] || 0, 10) || 0;
-          const onPlan = planUntilDay(d);
-          const cumUntil = days.filter(x => x <= d)
-            .reduce((acc, dd) => acc + (parseInt(entries[dd] || 0, 10) || 0), 0);
-          const status = goal ? cumUntil - onPlan : 0;
-          const isTodayFlag = d === today;
-          const future = isFuture(d);
-
-          return (
-            <div
-              className={classNames("grid grid-cols-12 gap-3 items-center py-2 border-b border-slate-100", isTodayFlag ? "bg-slate-50" : "")}
-              data-day={d}
-            >
-              <div className="col-span-5 text-sm">
-                <div className="font-medium">{formatDateNL(d)} {isTodayFlag ? "(vandaag)" : ""}</div>
-                <div className="text-xs text-slate-600">
-                  Op schema {onPlan} min, verschil {status}
-                </div>
-              </div>
-              <div className="col-span-4">
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  className="w-full border rounded-lg px-2 py-1 disabled:bg-slate-50 disabled:text-slate-400"
-                  value={m}
-                  min={0}
-                  step={1}
-                  onChange={e=>onProposeChange(d, e.target.value)}
-                  disabled={future}
-                />
-                {!future && <div className="mt-1 text-xs text-slate-500">Wijziging wordt pas opgeslagen na Bevestig vandaag</div>}
-                {future && <div className="mt-1 text-xs text-slate-500">Toekomstige dag, later invullen</div>}
-              </div>
-              <div className="col-span-3 text-right text-xs">
-                {future ? "Toekomstig" : `Cumulatief ${cumUntil}`}
-              </div>
-            </div>
-          );
-        }
-
+      function CalendarGrid({days,entries,onProposeChange,goal,planUntilDay,allowFuture}){
+        const today=YMD(new Date());
         return (
           <Card>
-            <h3 className="text-xl font-semibold">Agenda</h3>
-            <p className="text-sm text-slate-600 mb-2">Dag 1 is 1 november, dag 61 is 31 december</p>
-            <WeekStrip />
-            <div>
-              {weeks.map(w => (
-                <div key={w.weekStart} data-week={w.weekStart} className="mb-4">
-                  <div className="text-xs tracking-wide uppercase text-slate-600 mb-1">
-                    Week van {formatDateNL(w.weekStart)}
+            <h3 className="text-xl font-semibold mb-1">Jouw 61 dagen</h3>
+            <p className="text-sm text-slate-600 mb-4">Dag 1 is 1 november, dag 61 is 31 december</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {days.map(d=>{
+                const m=parseInt(entries[d]||0,10);
+                const plan=planUntilDay(d);
+                const future=!allowFuture && isFuture(d);
+                return (
+                  <div key={d} className={classNames("rounded-xl border p-3 flex flex-col", future?"opacity-50":"bg-white")}>
+                    <div className="text-xs text-slate-600">{fromYMD(d).toLocaleDateString("nl-NL",{weekday:"short",day:"2-digit",month:"short"})}</div>
+                    <input disabled={future} type="number" inputMode="numeric" className="mt-2 border rounded-lg px-2 py-1" value={m} onChange={e=>onProposeChange(d,e.target.value)} min={0}/>
+                    <div className="mt-2 text-xs text-slate-600">Op schema {plan} min</div>
                   </div>
-                  <div className="rounded-xl border border-slate-200">
-                    {w.days.map(d => <DayRow key={d} d={d} />)}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </Card>
         );
       }
 
-      // CSV export per deelnemer
-      function exportCSV(name, db, days, planUntilDay, CONFIG){
-        const rec = db[name]; if(!rec) return;
-        const header = ["datum","deelnemer","minuten","cumulatief","doeltype","doel","plan_tot_vandaag","verschil_tot_plan","percentage_voltooid"];
-        let cum = 0;
-        const rows = days.map(d => {
-          const m = parseInt(rec.entries[d] || 0, 10);
-          cum += m;
-          const goal = CONFIG.goals[rec.level] || 0;
-          const plan = planUntilDay(goal, days.length, d, days);
-          const pct = goal ? Math.round((cum / goal) * 100) : 0;
-          const diff = cum - plan;
-          return [d, name, m, cum, rec.level || "", goal, plan, diff, pct];
-        });
-        const csv = [header, ...rows].map(r => r.join(",")).join("\n");
-        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a"); a.href = url; a.download = `${name}_zone2_${new Date().toISOString().slice(0,10)}.csv`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-      }
-
-      const root = ReactDOM.createRoot(document.getElementById("root"));
-      root.render(<App />);
-    </script>
-  </body>
-</html>
+      function ConfirmModal({date,minutes,onConfirm,onCancel}){
+        return (
+          <div className="fixed inset-0 flex items-center justify-center bg-black/40 z-50">
+            <div className="bg-white rounded-2xl shadow-lg p-6 w-80 text-center">
+              <p className="text-lg font-medium mb-4">Bevestig {minutes} minuten voor {fromYMD(date).toLocaleDateString("nl-NL",{day:"2-digit",month:"short"})}</p>
+              <div className="flex justify-center gap-3">
+                <button className="px-4 py-2 rounded-xl bg-slate-900 text-white" onClick={onConfirm}>Bevestigen</button>
+                <button className="px-4 py-2 rounded-xl border" onClick={onCancel}>Annuleer
