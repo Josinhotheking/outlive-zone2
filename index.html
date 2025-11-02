@@ -25,7 +25,7 @@
           { name: "Tom", pin: "2222" },
           { name: "Gerben Jan", pin: "3333" }
         ],
-        goals: { Easy: 1750, Medium: 2100, Hard: 2500 }
+        goals: { Easy: 1750, Medium: 2100, Hard: 2500 } // correct per niveau
       };
 
       // ================== HELPERS ==================
@@ -37,55 +37,55 @@
         const y = currentYear();
         return { start: new Date(`${y}-11-01T00:00:00`), end: new Date(`${y}-12-31T00:00:00`) };
       }
-
       function enumerateDays(start, end) {
         const out = [];
         const d = new Date(start);
         while (d <= end) { out.push(YMD(d)); d.setDate(d.getDate() + 1); }
         return out;
       }
-
       function daysBetweenInclusive(d1, d2) {
         const a = new Date(d1.getFullYear(), d1.getMonth(), d1.getDate());
         const b = new Date(d2.getFullYear(), d2.getMonth(), d2.getDate());
         const ms = b - a;
         return Math.floor(ms / 86400000) + 1;
       }
-
       function radialStyle() {
         return {
           background: "radial-gradient(1200px circle at 50% 20%, rgba(255,255,255,1) 0%, rgba(255,255,255,1) 25%, rgba(210,236,255,0.9) 38%, rgba(232,249,225,0.85) 52%, rgba(255,238,246,0.85) 66%, rgba(255,255,255,1) 100%)",
           minHeight: "100vh"
         };
       }
-
       const classNames = (...a) => a.filter(Boolean).join(" ");
 
+      // Goggins quotes
       const QUOTES = [
-        "When you think you are done, you are only 40 percent done.",
-        "Stay disciplined when motivation fades.",
-        "You do not find toughness, you build it.",
-        "Every minute counts, stay hard.",
-        "It is you versus you, no one else.",
+        "I don't stop when I'm tired, I stop when I'm done.",
+        "When you think that you are done, you're only 40% in.",
+        "Stay hard.",
+        "We don't rise to the level of our expectations, we fall to the level of our training.",
+        "Pain unlocks a secret doorway in the mind.",
+        "It's you versus you.",
         "Be uncommon amongst uncommon people.",
-        "Suffering is the true test of life."
+        "Every minute counts."
       ];
       const pickQuote = () => QUOTES[Math.floor(Math.random() * QUOTES.length)];
 
-      // ============ STORAGE KEY, MET RESET PER URL ============
-      const LS_KEY = "outlive_zone2_data_v3";
-      // reset als ?reset=1 in de URL staat
+      // ============ STORAGE KEY, MET RESET ============
+      const LS_KEY = "outlive_zone2_data_v4";
+      function hardReset() {
+        try { localStorage.removeItem(LS_KEY); } catch {}
+        location.reload();
+      }
+      // Optionele URL reset: ?reset=1
       try {
         const usp = new URLSearchParams(location.search);
         if (usp.get("reset") === "1") {
           localStorage.removeItem(LS_KEY);
-          // schoon de query op na reset
           usp.delete("reset");
           const clean = location.pathname + (usp.toString() ? "?" + usp.toString() : "");
           history.replaceState(null, "", clean);
         }
       } catch {}
-
       const loadLocal = () => { try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch { return {}; } };
       const saveLocal = db => localStorage.setItem(LS_KEY, JSON.stringify(db));
 
@@ -94,14 +94,13 @@
         const first = new Date(year, monthIndex, 1);
         const last = new Date(year, monthIndex + 1, 0);
         const daysInMonth = last.getDate();
-        const startWeekday = (first.getDay() + 6) % 7;
+        const startWeekday = (first.getDay() + 6) % 7; // maandag = 0
         const cells = [];
         for (let i = 0; i < startWeekday; i++) cells.push(null);
         for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(year, monthIndex, d));
         while (cells.length % 7 !== 0) cells.push(null);
         return cells;
       }
-
       const WEEKDAYS = ["Ma","Di","Wo","Do","Vr","Za","Zo"];
 
       // ================== APP ==================
@@ -116,23 +115,21 @@
 
         React.useEffect(() => saveLocal(db), [db]);
 
+        // DB helpers
         function ensureUser(name) {
           setDb(cur => {
             if (!cur[name]) cur[name] = { level: null, entries: {} };
             return { ...cur };
           });
         }
-
         function setLevel(name, level) {
           setDb(cur => {
             const next = { ...cur };
             next[name] = next[name] || { level: null, entries: {} };
-            // keuze blijft eenmalig, als er al een level staat wijzigen we niet
-            if (!next[name].level) next[name].level = level;
+            if (!next[name].level) next[name].level = level; // keuze vastzetten
             return next;
           });
         }
-
         function setMinutes(name, ymd, mins) {
           setDb(cur => {
             const next = { ...cur };
@@ -141,7 +138,6 @@
             return next;
           });
         }
-
         function resetEntries(name) {
           if (!confirm("Weet je zeker dat je alle minuten wilt resetten voor deze deelnemer")) return;
           setDb(cur => {
@@ -152,18 +148,17 @@
           });
         }
 
+        // Berekeningen
         function totalFor(n) {
           const rec = db[n];
           if (!rec) return 0;
           return Object.values(rec.entries || {}).reduce((a, b) => a + (parseInt(b || 0, 10) || 0), 0);
         }
-
         function goalFor(n) {
           const rec = db[n];
           if (!rec || !rec.level) return 0;
           return CONFIG.goals[rec.level];
         }
-
         function remainingDaysFromToday(today = new Date()) {
           const { start, end } = challengeRange();
           const t0 = new Date(Math.max(today.setHours(0,0,0,0), new Date(start).setHours(0,0,0,0)));
@@ -201,6 +196,7 @@
                   openModal={(ymd, current) => setModal({ dateYMD: ymd, value: current })}
                   resetEntries={resetEntries}
                   leaderboard={leaderboard}
+                  onHardReset={hardReset}
                 />
               )}
 
@@ -249,7 +245,7 @@
           const p = CONFIG.participants.find(x => x.name === name);
           if (!p || p.pin !== pin) { setError("Verkeerde pincode"); return; }
           ensureUser(name);
-          setLevel(name, level);
+          setLevel(name, level); // zet de op dat moment gekozen level vast
           onLogin({ name });
         }
 
@@ -271,15 +267,25 @@
                 <label className="block text-sm">Niveau</label>
                 <div className="mt-2 grid grid-cols-3 gap-2">
                   {["Easy","Medium","Hard"].map(opt => (
-                    <button key={opt} className={classNames("px-3 py-2 rounded-xl border", level===opt?"bg-slate-900 text-white":"bg-white")} onClick={() => setLevelLocal(opt)}>{opt}</button>
+                    <button
+                      key={opt}
+                      className={classNames("px-3 py-2 rounded-xl border", level===opt ? "bg-slate-900 text-white" : "bg-white")}
+                      onClick={() => setLevelLocal(opt)}
+                    >
+                      {opt}
+                    </button>
                   ))}
                 </div>
                 <p className="text-xs text-slate-600 mt-1">Let op, keuze is eenmalig en wordt vastgezet bij eerste inlog</p>
               </div>
-              {error && <p className="mt-3 text-red-600">{error}</p>}
-              <button className="mt-6 w-full bg-slate-900 text-white rounded-xl py-3" onClick={handleLogin}>Bevestig en start</button>
 
-              <!-- Linkje om lokaal te resetten voor testdoeleinden -->
+              {error && <p className="mt-3 text-red-600">{error}</p>}
+
+              <button className="mt-6 w-full bg-slate-900 text-white rounded-xl py-3" onClick={handleLogin}>
+                Bevestig en start
+              </button>
+
+              {/* Link voor lokale reset t.b.v. testen */}
               <div className="mt-3 text-center">
                 <a className="text-xs text-slate-500 underline" href="?reset=1">Reset lokale data</a>
               </div>
@@ -300,7 +306,7 @@
         );
       }
 
-      function MainScreen({ user, db, allDays, setUser, totalFor, goalFor, remainingDaysFromToday, openModal, resetEntries, leaderboard }) {
+      function MainScreen({ user, db, allDays, setUser, totalFor, goalFor, remainingDaysFromToday, openModal, resetEntries, leaderboard, onHardReset }) {
         const name = user.name;
         const rec = db[name] || { level: null, entries: {} };
         const goal = goalFor(name);
@@ -332,7 +338,6 @@
           const per = goal / allDays.length;
           return Math.round(per * (idx + 1));
         }
-
         function badges() {
           const arr = [];
           if (total >= 750) arr.push("750 minuten");
@@ -381,13 +386,14 @@
                   <div className="flex items-center gap-2">
                     <button className="px-3 py-2 rounded-xl border" onClick={() => setUser(null)}>Uitloggen</button>
                     <button className="px-3 py-2 rounded-xl border text-rose-700" onClick={() => resetEntries(name)}>Reset deelnemer</button>
+                    <button className="px-3 py-2 rounded-xl border text-slate-700" onClick={onHardReset}>Volledige reset</button>
                   </div>
                 </div>
 
                 <div className="mt-4 grid grid-cols-3 gap-3 text-center">
                   <Stat label="Tot nu toe" value={total} sub="minuten" />
-                  <Stat label="Nog te gaan" value={Math.max(0, remaining)} sub="minuten" />
-                  <Stat label="Benodigd per dag" value={remDays > 0 ? Math.ceil(remaining / remDays) : remaining} sub={remDays > 0 ? `over ${remDays} dagen` : "0 dagen"} />
+                  <Stat label="Nog te gaan" value={remaining} sub="minuten" />
+                  <Stat label="Benodigd per dag" value={neededPerDay} sub={remDays > 0 ? `over ${remDays} dagen` : "0 dagen"} />
                 </div>
 
                 {badges().length > 0 && (
