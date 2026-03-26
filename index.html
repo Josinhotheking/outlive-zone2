@@ -25,7 +25,7 @@
         zone2Goal: 1250,
         zone5Goal: 120,
         strengthGoal: 9,
-        storageKey: "jos_training_april_2026" // Cloud storage key
+        storageKey: "jos_training_april_2026_v2"
       };
 
       const NOTE_OPTIONS = [
@@ -82,10 +82,13 @@
       // ============ CLOUD STORAGE ============
       async function loadFromCloud() {
         try {
-          const result = await window.storage.get(CONFIG.storageKey, true); // shared=true
+          const result = await window.storage.get(CONFIG.storageKey, true);
           if (result && result.value) {
-            return JSON.parse(result.value);
+            const data = JSON.parse(result.value);
+            console.log('Loaded from cloud:', data);
+            return data;
           }
+          console.log('No cloud data found, starting fresh');
           return { entries: {} };
         } catch (e) {
           console.error('Failed to load from cloud:', e);
@@ -95,7 +98,9 @@
 
       async function saveToCloud(db) {
         try {
-          await window.storage.set(CONFIG.storageKey, JSON.stringify(db), true); // shared=true
+          console.log('Saving to cloud:', db);
+          const result = await window.storage.set(CONFIG.storageKey, JSON.stringify(db), true);
+          console.log('Save result:', result);
           return true;
         } catch (e) {
           console.error('Failed to save to cloud:', e);
@@ -234,28 +239,41 @@
         const [loggedIn, setLoggedIn] = React.useState(false);
         const [quote, setQuote] = React.useState("");
         const [modal, setModal] = React.useState(null);
-        const [syncStatus, setSyncStatus] = React.useState(""); // "saving" | "saved" | "error"
+        const [syncStatus, setSyncStatus] = React.useState("");
+        const [lastSyncTime, setLastSyncTime] = React.useState(null);
 
         // Load data on mount
         React.useEffect(() => {
           loadFromCloud().then(data => {
             setDb(data);
             setLoading(false);
+            setLastSyncTime(new Date());
           });
         }, []);
 
-        // Auto-save to cloud whenever db changes
-        React.useEffect(() => {
-          if (!loading && loggedIn) {
-            setSyncStatus("saving");
-            saveToCloud(db).then(success => {
-              setSyncStatus(success ? "saved" : "error");
-              setTimeout(() => setSyncStatus(""), 2000);
-            });
+        async function manualSync() {
+          setSyncStatus("saving");
+          const success = await saveToCloud(db);
+          if (success) {
+            setSyncStatus("saved");
+            setLastSyncTime(new Date());
+            setTimeout(() => setSyncStatus(""), 2000);
+          } else {
+            setSyncStatus("error");
+            setTimeout(() => setSyncStatus(""), 3000);
           }
-        }, [db, loading, loggedIn]);
+        }
 
-        async function setMinutes(ymd, zone2, zone5, strength, note) {
+        async function refreshFromCloud() {
+          setSyncStatus("loading");
+          const data = await loadFromCloud();
+          setDb(data);
+          setSyncStatus("loaded");
+          setLastSyncTime(new Date());
+          setTimeout(() => setSyncStatus(""), 2000);
+        }
+
+        function setMinutes(ymd, zone2, zone5, strength, note) {
           setDb(cur => {
             const next = { ...cur };
             next.entries = { ...next.entries, [ymd]: { zone2, zone5, strength, note } };
@@ -263,7 +281,7 @@
           });
         }
         
-        async function resetEntries() {
+        function resetEntries() {
           if (!confirm("Weet je zeker dat je alle minuten wilt resetten?")) return;
           setDb({ entries: {} });
         }
@@ -301,7 +319,7 @@
             <div style={radialStyle()} className="text-slate-900 flex items-center justify-center min-h-screen">
               <div className="text-center">
                 <div className="text-2xl font-semibold mb-2">Laden...</div>
-                <div className="text-slate-600">Data syncen vanaf cloud</div>
+                <div className="text-slate-600">Data laden vanaf cloud</div>
               </div>
             </div>
           );
@@ -329,6 +347,9 @@
                   predictions={predictions}
                   records={records}
                   syncStatus={syncStatus}
+                  lastSyncTime={lastSyncTime}
+                  onManualSync={manualSync}
+                  onRefresh={refreshFromCloud}
                 />
               )}
 
@@ -391,8 +412,8 @@
                 <div className="flex items-start gap-2">
                   <div className="text-2xl">☁️</div>
                   <div>
-                    <div className="text-sm font-semibold text-blue-900">Auto-sync ingeschakeld</div>
-                    <div className="text-xs text-blue-700 mt-1">Je data wordt automatisch gesynchroniseerd tussen al je apparaten</div>
+                    <div className="text-sm font-semibold text-blue-900">Cloud sync beschikbaar</div>
+                    <div className="text-xs text-blue-700 mt-1">Gebruik de sync knop om je data te synchroniseren tussen apparaten</div>
                   </div>
                 </div>
               </div>
@@ -442,7 +463,7 @@
         );
       }
 
-      function MainScreen({ db, allDays, setLoggedIn, totalZone2, totalZone5, totalStrength, remainingDaysFromToday, openModal, resetEntries, onHardReset, streaks, predictions, records, syncStatus }) {
+      function MainScreen({ db, allDays, setLoggedIn, totalZone2, totalZone5, totalStrength, remainingDaysFromToday, openModal, resetEntries, onHardReset, streaks, predictions, records, syncStatus, lastSyncTime, onManualSync, onRefresh }) {
         const entries = db.entries || {};
         const zone2Total = totalZone2();
         const zone2Remaining = Math.max(0, CONFIG.zone2Goal - zone2Total);
@@ -544,37 +565,47 @@
                   <p className="text-slate-600 text-sm">1250 min Z2 | 120 min Z5 | 9x Kracht</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {/* Sync status indicator */}
-                  <div className="px-3 py-2 rounded-xl border bg-slate-50 flex items-center gap-2">
-                    {syncStatus === "saving" && (
-                      <>
-                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                        <span className="text-xs text-slate-600">Syncen...</span>
-                      </>
-                    )}
-                    {syncStatus === "saved" && (
-                      <>
-                        <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
-                        <span className="text-xs text-emerald-700">Gesynchroniseerd</span>
-                      </>
-                    )}
-                    {syncStatus === "error" && (
-                      <>
-                        <div className="w-2 h-2 bg-rose-500 rounded-full"></div>
-                        <span className="text-xs text-rose-700">Fout</span>
-                      </>
-                    )}
-                    {!syncStatus && (
-                      <>
-                        <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
-                        <span className="text-xs text-slate-600">☁️</span>
-                      </>
-                    )}
-                  </div>
+                  <button 
+                    className="px-3 py-2 rounded-xl border bg-blue-50 text-blue-700 hover:bg-blue-100 flex items-center gap-2"
+                    onClick={onManualSync}
+                    disabled={syncStatus === "saving"}
+                  >
+                    {syncStatus === "saving" ? "Bezig..." : "☁️ Sync nu"}
+                  </button>
+                  <button 
+                    className="px-3 py-2 rounded-xl border hover:bg-slate-50"
+                    onClick={onRefresh}
+                    title="Laad laatste versie"
+                  >
+                    🔄
+                  </button>
                   <button className="px-3 py-2 rounded-xl border" onClick={() => setLoggedIn(false)}>Uit</button>
-                  <button className="px-3 py-2 rounded-xl border text-rose-700" onClick={onHardReset}>Reset</button>
                 </div>
               </div>
+
+              {/* Sync status banner */}
+              {syncStatus && (
+                <div className={classNames(
+                  "mb-4 rounded-xl p-3 text-sm flex items-center gap-2",
+                  syncStatus === "saving" ? "bg-blue-50 text-blue-700 border border-blue-200" :
+                  syncStatus === "saved" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" :
+                  syncStatus === "loading" ? "bg-blue-50 text-blue-700 border border-blue-200" :
+                  syncStatus === "loaded" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" :
+                  "bg-rose-50 text-rose-700 border border-rose-200"
+                )}>
+                  {syncStatus === "saving" && "⏳ Bezig met opslaan naar cloud..."}
+                  {syncStatus === "saved" && "✅ Data succesvol opgeslagen!"}
+                  {syncStatus === "loading" && "⏳ Bezig met laden vanaf cloud..."}
+                  {syncStatus === "loaded" && "✅ Laatste versie geladen!"}
+                  {syncStatus === "error" && "❌ Sync mislukt. Probeer het opnieuw."}
+                </div>
+              )}
+
+              {lastSyncTime && (
+                <div className="mb-4 text-xs text-slate-500 text-center">
+                  Laatste sync: {lastSyncTime.toLocaleTimeString("nl-NL")}
+                </div>
+              )}
 
               {/* Streak Display */}
               <div className="mb-4 bg-gradient-to-r from-orange-50 to-red-50 rounded-xl p-4 border border-orange-200">
