@@ -22,9 +22,20 @@
       const CONFIG = {
         name: "Jos",
         pin: "1111",
-        zone2Goal: 2500, // Hard mode only
+        zone2Goal: 2500,
         zone5Goal: 100
       };
+
+      const NOTE_OPTIONS = [
+        "Felt strong 💪",
+        "Crushed it 🔥",
+        "Tough session 😤",
+        "Legs tired 🦵",
+        "Easy pace 😌",
+        "Struggled 😮‍💨",
+        "Perfect flow 🌊",
+        "Custom..."
+      ];
 
       // ================== HELPERS ==================
       const YMD = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
@@ -67,18 +78,16 @@
       const pickQuote = () => QUOTES[Math.floor(Math.random() * QUOTES.length)];
 
       // ============ STORAGE + URL SYNC ============
-      const LS_KEY = "outlive_zone2_5_april_2026_jos_v1";
+      const LS_KEY = "outlive_zone2_5_april_2026_jos_v2";
       
       function hardReset() {
         try { localStorage.removeItem(LS_KEY); } catch {}
-        // Clear URL data param too
         const url = new URL(window.location);
         url.searchParams.delete('data');
         window.history.replaceState(null, '', url);
         location.reload();
       }
 
-      // URL data import on load
       function loadFromURL() {
         try {
           const params = new URLSearchParams(window.location.search);
@@ -86,9 +95,7 @@
           if (dataParam) {
             const decoded = atob(dataParam);
             const parsed = JSON.parse(decoded);
-            // Save to localStorage
             localStorage.setItem(LS_KEY, JSON.stringify(parsed));
-            // Clean URL
             params.delete('data');
             const cleanUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
             window.history.replaceState(null, '', cleanUrl);
@@ -100,7 +107,6 @@
         return null;
       }
 
-      // Check for reset param
       try {
         const usp = new URLSearchParams(location.search);
         if (usp.get("reset") === "1") {
@@ -112,15 +118,12 @@
       } catch {}
 
       const loadLocal = () => { 
-        // First try URL import
         const urlData = loadFromURL();
         if (urlData) return urlData;
-        // Then localStorage
         try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch { return {}; } 
       };
       const saveLocal = db => localStorage.setItem(LS_KEY, JSON.stringify(db));
 
-      // Export to URL
       function exportToURL(db) {
         try {
           const json = JSON.stringify(db);
@@ -134,12 +137,11 @@
         }
       }
 
-      // Maandhelpers
       function getMonthMatrix(year, monthIndex) {
         const first = new Date(year, monthIndex, 1);
         const last = new Date(year, monthIndex + 1, 0);
         const daysInMonth = last.getDate();
-        const startWeekday = (first.getDay() + 6) % 7; // maandag = 0
+        const startWeekday = (first.getDay() + 6) % 7;
         const cells = [];
         for (let i = 0; i < startWeekday; i++) cells.push(null);
         for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(year, monthIndex, d));
@@ -147,6 +149,113 @@
         return cells;
       }
       const WEEKDAYS = ["Ma","Di","Wo","Do","Vr","Za","Zo"];
+
+      // ============ STREAK CALCULATION ============
+      function calculateStreaks(entries, allDays) {
+        let currentStreak = 0;
+        let longestStreak = 0;
+        let tempStreak = 0;
+        const today = YMD(new Date());
+        
+        // Sort days chronologically
+        const sortedDays = allDays.slice().sort();
+        
+        for (let i = 0; i < sortedDays.length; i++) {
+          const day = sortedDays[i];
+          const entry = entries[day] || {};
+          const totalMin = (parseInt(entry.zone2 || 0, 10) || 0) + (parseInt(entry.zone5 || 0, 10) || 0);
+          
+          if (totalMin > 0) {
+            tempStreak++;
+            longestStreak = Math.max(longestStreak, tempStreak);
+            
+            // Check if this is part of current streak (includes today or is today)
+            if (day <= today) {
+              currentStreak = tempStreak;
+            }
+          } else {
+            // Only break current streak if this day has passed
+            if (day < today) {
+              tempStreak = 0;
+            }
+          }
+        }
+        
+        return { current: currentStreak, longest: longestStreak };
+      }
+
+      // ============ PREDICTIONS ============
+      function calculatePredictions(entries, allDays, zone2Total, zone5Total) {
+        const today = new Date();
+        const { start, end } = challengeRange();
+        
+        // Days elapsed
+        const daysPassed = allDays.filter(d => fromYMD(d) <= today).length;
+        if (daysPassed === 0) return null;
+        
+        // Average per day
+        const zone2AvgPerDay = zone2Total / daysPassed;
+        const zone5AvgPerDay = zone5Total / daysPassed;
+        
+        // Days remaining to hit goals
+        const zone2Remaining = Math.max(0, CONFIG.zone2Goal - zone2Total);
+        const zone5Remaining = Math.max(0, CONFIG.zone5Goal - zone5Total);
+        
+        const zone2DaysNeeded = zone2AvgPerDay > 0 ? Math.ceil(zone2Remaining / zone2AvgPerDay) : 999;
+        const zone5DaysNeeded = zone5AvgPerDay > 0 ? Math.ceil(zone5Remaining / zone5AvgPerDay) : 999;
+        
+        // Projected completion dates
+        const zone2CompletionDate = new Date(today);
+        zone2CompletionDate.setDate(zone2CompletionDate.getDate() + zone2DaysNeeded);
+        
+        const zone5CompletionDate = new Date(today);
+        zone5CompletionDate.setDate(zone5CompletionDate.getDate() + zone5DaysNeeded);
+        
+        // Days ahead/behind schedule
+        const totalDays = allDays.length;
+        const expectedZone2 = (CONFIG.zone2Goal / totalDays) * daysPassed;
+        const expectedZone5 = (CONFIG.zone5Goal / totalDays) * daysPassed;
+        
+        const zone2DaysAhead = Math.round((zone2Total - expectedZone2) / (CONFIG.zone2Goal / totalDays));
+        const zone5DaysAhead = Math.round((zone5Total - expectedZone5) / (CONFIG.zone5Goal / totalDays));
+        
+        return {
+          zone2CompletionDate: zone2CompletionDate <= end ? zone2CompletionDate : null,
+          zone5CompletionDate: zone5CompletionDate <= end ? zone5CompletionDate : null,
+          zone2DaysAhead,
+          zone5DaysAhead,
+          zone2AvgPerDay: Math.round(zone2AvgPerDay),
+          zone5AvgPerDay: Math.round(zone5AvgPerDay * 10) / 10
+        };
+      }
+
+      // ============ SESSION RECORDS ============
+      function calculateRecords(entries, allDays) {
+        let longestSession = 0;
+        let mostZone5 = 0;
+        let bestWeek = 0;
+        
+        // Longest session and most Zone 5 in a day
+        Object.values(entries).forEach(entry => {
+          const total = (parseInt(entry.zone2 || 0, 10) || 0) + (parseInt(entry.zone5 || 0, 10) || 0);
+          const z5 = parseInt(entry.zone5 || 0, 10) || 0;
+          longestSession = Math.max(longestSession, total);
+          mostZone5 = Math.max(mostZone5, z5);
+        });
+        
+        // Best week (rolling 7-day window)
+        const sortedDays = allDays.slice().sort();
+        for (let i = 0; i <= sortedDays.length - 7; i++) {
+          const weekDays = sortedDays.slice(i, i + 7);
+          const weekTotal = weekDays.reduce((sum, day) => {
+            const entry = entries[day] || {};
+            return sum + (parseInt(entry.zone2 || 0, 10) || 0) + (parseInt(entry.zone5 || 0, 10) || 0);
+          }, 0);
+          bestWeek = Math.max(bestWeek, weekTotal);
+        }
+        
+        return { longestSession, mostZone5, bestWeek };
+      }
 
       // ================== APP ==================
       function App() {
@@ -161,20 +270,19 @@
 
         React.useEffect(() => saveLocal(db), [db]);
 
-        // DB helpers
-        function setMinutes(ymd, zone2, zone5) {
+        function setMinutes(ymd, zone2, zone5, note) {
           setDb(cur => {
             const next = { ...cur };
-            next.entries = { ...next.entries, [ymd]: { zone2, zone5 } };
+            next.entries = { ...next.entries, [ymd]: { zone2, zone5, note } };
             return next;
           });
         }
+        
         function resetEntries() {
           if (!confirm("Weet je zeker dat je alle minuten wilt resetten?")) return;
           setDb({ entries: {} });
         }
 
-        // Berekeningen
         function totalZone2() {
           return Object.values(db.entries || {}).reduce((a, b) => {
             const z2 = parseInt(b?.zone2 || 0, 10) || 0;
@@ -182,9 +290,11 @@
             return a + z2 + z5;
           }, 0);
         }
+        
         function totalZone5() {
           return Object.values(db.entries || {}).reduce((a, b) => a + (parseInt(b?.zone5 || 0, 10) || 0), 0);
         }
+        
         function remainingDaysFromToday(today = new Date()) {
           const { start, end } = challengeRange();
           const t0 = new Date(Math.max(today.setHours(0,0,0,0), new Date(start).setHours(0,0,0,0)));
@@ -192,6 +302,10 @@
           if (t0 > endNorm) return 0;
           return daysBetweenInclusive(t0, endNorm);
         }
+
+        const streaks = React.useMemo(() => calculateStreaks(db.entries || {}, allDays), [db.entries, allDays]);
+        const predictions = React.useMemo(() => calculatePredictions(db.entries || {}, allDays, totalZone2(), totalZone5()), [db.entries, allDays]);
+        const records = React.useMemo(() => calculateRecords(db.entries || {}, allDays), [db.entries, allDays]);
 
         return (
           <div style={radialStyle()} className="text-slate-900">
@@ -207,10 +321,13 @@
                   totalZone2={totalZone2}
                   totalZone5={totalZone5}
                   remainingDaysFromToday={remainingDaysFromToday}
-                  openModal={(ymd, z2, z5) => setModal({ dateYMD: ymd, zone2: z2, zone5: z5 })}
+                  openModal={(ymd, z2, z5, note) => setModal({ dateYMD: ymd, zone2: z2, zone5: z5, note: note })}
                   resetEntries={resetEntries}
                   onHardReset={hardReset}
                   onExport={() => setShowExport(true)}
+                  streaks={streaks}
+                  predictions={predictions}
+                  records={records}
                 />
               )}
 
@@ -219,9 +336,10 @@
                   dateYMD={modal.dateYMD}
                   initialZone2={modal.zone2}
                   initialZone5={modal.zone5}
+                  initialNote={modal.note}
                   onCancel={() => setModal(null)}
-                  onSave={(z2, z5) => {
-                    setMinutes(modal.dateYMD, z2, z5);
+                  onSave={(z2, z5, note) => {
+                    setMinutes(modal.dateYMD, z2, z5, note);
                     setModal(null);
                     setQuote(pickQuote());
                   }}
@@ -322,7 +440,7 @@
         );
       }
 
-      function MainScreen({ db, allDays, setLoggedIn, totalZone2, totalZone5, remainingDaysFromToday, openModal, resetEntries, onHardReset, onExport }) {
+      function MainScreen({ db, allDays, setLoggedIn, totalZone2, totalZone5, remainingDaysFromToday, openModal, resetEntries, onHardReset, onExport, streaks, predictions, records }) {
         const entries = db.entries || {};
         const zone2Total = totalZone2();
         const zone2Remaining = Math.max(0, CONFIG.zone2Goal - zone2Total);
@@ -362,6 +480,12 @@
           if (zone2Total >= 2500) arr.push("2500 Zone 2+ ✓");
           if (zone5Total >= 50) arr.push("50 Zone 5");
           if (zone5Total >= 100) arr.push("100 Zone 5 ✓");
+          
+          // Streak badges
+          if (streaks.current >= 7) arr.push("🔥 7-day warrior");
+          if (streaks.current >= 14) arr.push("🔥 14-day beast");
+          if (streaks.current >= 21) arr.push("🔥 21-day legend");
+          
           return arr;
         }
 
@@ -384,17 +508,19 @@
           else if (totalMin > 0 && delta < 0) borderClr = "border-rose-300";
 
           const hasZone5 = zone5Min > 0;
+          const hasNote = entry.note && entry.note.trim();
 
           return (
             <button
               key={ymd}
-              onClick={() => openModal(ymd, zone2Min, zone5Min)}
+              onClick={() => openModal(ymd, zone2Min, zone5Min, entry.note)}
               className={classNames("h-20 rounded-xl border p-2 text-left hover:shadow-sm transition", borderClr, isToday ? "ring-2 ring-slate-900" : "", hasZone5 ? "bg-amber-50" : "")}
-              title={`Plan ${plan} min, cumulatief ${cum} min`}
+              title={hasNote ? entry.note : `Plan ${plan} min, cumulatief ${cum} min`}
             >
               <div className="text-xs text-slate-600">{d.toLocaleDateString("nl-NL",{ day:"2-digit", month:"short" })}</div>
               <div className="text-sm font-semibold mt-1">{totalMin} min</div>
               {hasZone5 && <div className="text-xs text-amber-600">Z5: {zone5Min}</div>}
+              {hasNote && <div className="text-xs text-slate-400 truncate">💬</div>}
             </button>
           );
         }
@@ -413,6 +539,24 @@
                   </button>
                   <button className="px-3 py-2 rounded-xl border" onClick={() => setLoggedIn(false)}>Uitloggen</button>
                   <button className="px-3 py-2 rounded-xl border text-rose-700" onClick={resetEntries}>Reset</button>
+                </div>
+              </div>
+
+              {/* Streak Display */}
+              <div className="mb-4 bg-gradient-to-r from-orange-50 to-red-50 rounded-xl p-4 border border-orange-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm text-slate-600">Current Streak</div>
+                    <div className="text-3xl font-bold text-orange-600">
+                      {streaks.current === 0 ? "🔴" : "🔥"} {streaks.current} {streaks.current === 1 ? "dag" : "dagen"}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm text-slate-600">Longest Streak</div>
+                    <div className="text-2xl font-semibold text-slate-700">
+                      🏆 {streaks.longest} {streaks.longest === 1 ? "dag" : "dagen"}
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -453,15 +597,76 @@
               {badges().length > 0 && (
                 <div className="mt-4 flex flex-wrap gap-2">
                   {badges().map(b => (
-                    <span key={b} className={classNames("px-3 py-1 rounded-full text-xs", b.includes("Zone 5") ? "bg-amber-600 text-white" : "bg-slate-900 text-white")}>{b}</span>
+                    <span key={b} className={classNames("px-3 py-1 rounded-full text-xs", 
+                      b.includes("Zone 5") ? "bg-amber-600 text-white" : 
+                      b.includes("🔥") ? "bg-orange-600 text-white" :
+                      "bg-slate-900 text-white")}>{b}</span>
                   ))}
                 </div>
               )}
             </Card>
 
+            {/* Predictions */}
+            {predictions && (
+              <Card>
+                <h3 className="text-lg font-semibold mb-3">📊 Predictions & Pace</h3>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="bg-emerald-50 rounded-lg p-3">
+                    <div className="text-xs text-slate-600">Zone 2 Pace</div>
+                    <div className="text-lg font-semibold">{predictions.zone2AvgPerDay} min/dag</div>
+                    {predictions.zone2CompletionDate && (
+                      <div className="text-xs text-slate-600 mt-1">
+                        Op koers voor {predictions.zone2CompletionDate.toLocaleDateString("nl-NL", { day: "numeric", month: "short" })}
+                      </div>
+                    )}
+                    <div className={classNames("text-xs mt-1 font-semibold", 
+                      predictions.zone2DaysAhead >= 0 ? "text-emerald-700" : "text-rose-700")}>
+                      {predictions.zone2DaysAhead >= 0 ? `${predictions.zone2DaysAhead} dagen voorsprong` : `${Math.abs(predictions.zone2DaysAhead)} dagen achterstand`}
+                    </div>
+                  </div>
+                  
+                  <div className="bg-amber-50 rounded-lg p-3">
+                    <div className="text-xs text-slate-600">Zone 5 Pace</div>
+                    <div className="text-lg font-semibold">{predictions.zone5AvgPerDay} min/dag</div>
+                    {predictions.zone5CompletionDate && (
+                      <div className="text-xs text-slate-600 mt-1">
+                        Op koers voor {predictions.zone5CompletionDate.toLocaleDateString("nl-NL", { day: "numeric", month: "short" })}
+                      </div>
+                    )}
+                    <div className={classNames("text-xs mt-1 font-semibold",
+                      predictions.zone5DaysAhead >= 0 ? "text-amber-700" : "text-rose-700")}>
+                      {predictions.zone5DaysAhead >= 0 ? `${predictions.zone5DaysAhead} dagen voorsprong` : `${Math.abs(predictions.zone5DaysAhead)} dagen achterstand`}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            {/* Session Records */}
+            <Card>
+              <h3 className="text-lg font-semibold mb-3">🏅 Personal Records</h3>
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <div className="text-xs text-slate-600">Longest Session</div>
+                  <div className="text-2xl font-bold text-slate-900">{records.longestSession}</div>
+                  <div className="text-xs text-slate-600">minuten</div>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <div className="text-xs text-slate-600">Most Zone 5</div>
+                  <div className="text-2xl font-bold text-amber-600">{records.mostZone5}</div>
+                  <div className="text-xs text-slate-600">in één dag</div>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <div className="text-xs text-slate-600">Best Week</div>
+                  <div className="text-2xl font-bold text-slate-900">{records.bestWeek}</div>
+                  <div className="text-xs text-slate-600">7 dagen</div>
+                </div>
+              </div>
+            </Card>
+
             <Card>
               <h3 className="text-xl font-semibold mb-2">April 2026</h3>
-              <p className="text-xs text-slate-600 mb-3">Gele achtergrond = Zone 5 training</p>
+              <p className="text-xs text-slate-600 mb-3">Gele achtergrond = Zone 5 | 💬 = Note</p>
               <div className="weekday-row text-xs text-slate-500 mb-2">
                 {WEEKDAYS.map(w => <div key={w} className="text-center">{w}</div>)}
               </div>
@@ -483,7 +688,6 @@
         </div>
       );
 
-      // ================== EXPORT MODAL ==================
       function ExportModal({ url, onClose }) {
         const [copied, setCopied] = React.useState(false);
 
@@ -520,11 +724,37 @@
         );
       }
 
-      // ================== MODAL MET TWEE ZONES ==================
-      function MinutesModal({ dateYMD, initialZone2, initialZone5, onCancel, onSave }) {
+      function MinutesModal({ dateYMD, initialZone2, initialZone5, initialNote, onCancel, onSave }) {
         const [z2, setZ2] = React.useState(Number.isFinite(initialZone2) ? initialZone2 : 0);
         const [z5, setZ5] = React.useState(Number.isFinite(initialZone5) ? initialZone5 : 0);
+        const [noteSelection, setNoteSelection] = React.useState(initialNote || "");
+        const [customNote, setCustomNote] = React.useState("");
+        const [showCustom, setShowCustom] = React.useState(false);
+        
         const d = fromYMD(dateYMD);
+
+        React.useEffect(() => {
+          if (initialNote && !NOTE_OPTIONS.includes(initialNote)) {
+            setShowCustom(true);
+            setCustomNote(initialNote);
+            setNoteSelection("Custom...");
+          }
+        }, [initialNote]);
+
+        function handleNoteChange(val) {
+          setNoteSelection(val);
+          if (val === "Custom...") {
+            setShowCustom(true);
+          } else {
+            setShowCustom(false);
+            setCustomNote("");
+          }
+        }
+
+        function handleSave() {
+          const finalNote = showCustom && customNote.trim() ? customNote.trim() : (noteSelection === "Custom..." ? "" : noteSelection);
+          onSave(z2, z5, finalNote);
+        }
         
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -592,20 +822,48 @@
                 </div>
               </div>
 
+              {/* Note dropdown */}
+              <div className="mt-6">
+                <label className="block text-sm font-semibold text-slate-900">Session note (optioneel)</label>
+                <select 
+                  className="mt-2 w-full border rounded-lg px-3 py-2"
+                  value={noteSelection}
+                  onChange={e => handleNoteChange(e.target.value)}
+                >
+                  <option value="">Geen note</option>
+                  {NOTE_OPTIONS.map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Custom note input */}
+              {showCustom && (
+                <div className="mt-3">
+                  <input
+                    type="text"
+                    className="w-full border rounded-lg px-3 py-2"
+                    placeholder="Typ je eigen note..."
+                    value={customNote}
+                    onChange={e => setCustomNote(e.target.value)}
+                    maxLength={50}
+                  />
+                </div>
+              )}
+
               <div className="mt-4 text-xs text-slate-600 text-center">
                 Zone 5 minuten tellen ook mee voor Zone 2 doel
               </div>
 
               <div className="mt-6 flex justify-end gap-2">
                 <button className="px-4 py-2 rounded-xl border" onClick={onCancel}>Annuleren</button>
-                <button className="px-4 py-2 rounded-xl bg-slate-900 text-white" onClick={() => onSave(z2, z5)}>Opslaan</button>
+                <button className="px-4 py-2 rounded-xl bg-slate-900 text-white" onClick={handleSave}>Opslaan</button>
               </div>
             </div>
           </div>
         );
       }
 
-      // ================ MOUNT ================
       const root = ReactDOM.createRoot(document.getElementById("root"));
       root.render(<App />);
     </script>
