@@ -24,8 +24,7 @@
         pin: "1111",
         zone2Goal: 1250,
         zone5Goal: 120,
-        strengthGoal: 9,
-        storageKey: "jos_training_april_2026_v2"
+        strengthGoal: 9
       };
 
       const NOTE_OPTIONS = [
@@ -79,43 +78,51 @@
       ];
       const pickQuote = () => QUOTES[Math.floor(Math.random() * QUOTES.length)];
 
-      // ============ CLOUD STORAGE ============
-      async function loadFromCloud() {
+      // ============ STORAGE ============
+      const LS_KEY = "outlive_zone2_5_april_2026_jos_final";
+      
+      function loadFromURL() {
         try {
-          const result = await window.storage.get(CONFIG.storageKey, true);
-          if (result && result.value) {
-            const data = JSON.parse(result.value);
-            console.log('Loaded from cloud:', data);
-            return data;
+          const params = new URLSearchParams(window.location.search);
+          const dataParam = params.get('data');
+          if (dataParam) {
+            const decoded = atob(dataParam);
+            const parsed = JSON.parse(decoded);
+            localStorage.setItem(LS_KEY, JSON.stringify(parsed));
+            params.delete('data');
+            const cleanUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+            window.history.replaceState(null, '', cleanUrl);
+            return parsed;
           }
-          console.log('No cloud data found, starting fresh');
-          return { entries: {} };
         } catch (e) {
-          console.error('Failed to load from cloud:', e);
-          return { entries: {} };
+          console.error('Failed to load from URL:', e);
         }
+        return null;
       }
 
-      async function saveToCloud(db) {
-        try {
-          console.log('Saving to cloud:', db);
-          const result = await window.storage.set(CONFIG.storageKey, JSON.stringify(db), true);
-          console.log('Save result:', result);
-          return true;
-        } catch (e) {
-          console.error('Failed to save to cloud:', e);
-          return false;
-        }
+      function hardReset() {
+        if (!confirm("Weet je ZEKER dat je alle data wilt wissen?")) return;
+        try { localStorage.removeItem(LS_KEY); } catch {}
+        location.reload();
       }
 
-      async function hardReset() {
-        if (!confirm("Weet je ZEKER dat je alle data wilt wissen? Dit kan niet ongedaan gemaakt worden!")) return;
+      const loadLocal = () => { 
+        const urlData = loadFromURL();
+        if (urlData) return urlData;
+        try { return JSON.parse(localStorage.getItem(LS_KEY)) || { entries: {} }; } catch { return { entries: {} }; } 
+      };
+      const saveLocal = db => localStorage.setItem(LS_KEY, JSON.stringify(db));
+
+      function exportToURL(db) {
         try {
-          await window.storage.delete(CONFIG.storageKey, true);
-          location.reload();
+          const json = JSON.stringify(db);
+          const encoded = btoa(json);
+          const url = new URL(window.location);
+          url.searchParams.set('data', encoded);
+          return url.toString();
         } catch (e) {
-          console.error('Reset failed:', e);
-          alert('Reset mislukt. Probeer het opnieuw.');
+          console.error('Failed to export:', e);
+          return null;
         }
       }
 
@@ -234,44 +241,13 @@
         const { start, end } = React.useMemo(() => challengeRange(), []);
         const allDays = React.useMemo(() => enumerateDays(start, end), [start, end]);
 
-        const [db, setDb] = React.useState({ entries: {} });
-        const [loading, setLoading] = React.useState(true);
+        const [db, setDb] = React.useState(loadLocal());
         const [loggedIn, setLoggedIn] = React.useState(false);
         const [quote, setQuote] = React.useState("");
         const [modal, setModal] = React.useState(null);
-        const [syncStatus, setSyncStatus] = React.useState("");
-        const [lastSyncTime, setLastSyncTime] = React.useState(null);
+        const [showExport, setShowExport] = React.useState(false);
 
-        // Load data on mount
-        React.useEffect(() => {
-          loadFromCloud().then(data => {
-            setDb(data);
-            setLoading(false);
-            setLastSyncTime(new Date());
-          });
-        }, []);
-
-        async function manualSync() {
-          setSyncStatus("saving");
-          const success = await saveToCloud(db);
-          if (success) {
-            setSyncStatus("saved");
-            setLastSyncTime(new Date());
-            setTimeout(() => setSyncStatus(""), 2000);
-          } else {
-            setSyncStatus("error");
-            setTimeout(() => setSyncStatus(""), 3000);
-          }
-        }
-
-        async function refreshFromCloud() {
-          setSyncStatus("loading");
-          const data = await loadFromCloud();
-          setDb(data);
-          setSyncStatus("loaded");
-          setLastSyncTime(new Date());
-          setTimeout(() => setSyncStatus(""), 2000);
-        }
+        React.useEffect(() => saveLocal(db), [db]);
 
         function setMinutes(ymd, zone2, zone5, strength, note) {
           setDb(cur => {
@@ -314,17 +290,6 @@
         const predictions = React.useMemo(() => calculatePredictions(db.entries || {}, allDays, totalZone2(), totalZone5()), [db.entries, allDays]);
         const records = React.useMemo(() => calculateRecords(db.entries || {}, allDays), [db.entries, allDays]);
 
-        if (loading) {
-          return (
-            <div style={radialStyle()} className="text-slate-900 flex items-center justify-center min-h-screen">
-              <div className="text-center">
-                <div className="text-2xl font-semibold mb-2">Laden...</div>
-                <div className="text-slate-600">Data laden vanaf cloud</div>
-              </div>
-            </div>
-          );
-        }
-
         return (
           <div style={radialStyle()} className="text-slate-900">
             <div className="max-w-6xl mx-auto px-4 py-8">
@@ -343,13 +308,10 @@
                   openModal={(ymd, z2, z5, str, note) => setModal({ dateYMD: ymd, zone2: z2, zone5: z5, strength: str, note: note })}
                   resetEntries={resetEntries}
                   onHardReset={hardReset}
+                  onExport={() => setShowExport(true)}
                   streaks={streaks}
                   predictions={predictions}
                   records={records}
-                  syncStatus={syncStatus}
-                  lastSyncTime={lastSyncTime}
-                  onManualSync={manualSync}
-                  onRefresh={refreshFromCloud}
                 />
               )}
 
@@ -366,6 +328,13 @@
                     setModal(null);
                     setQuote(pickQuote());
                   }}
+                />
+              )}
+
+              {showExport && (
+                <ExportModal
+                  url={exportToURL(db)}
+                  onClose={() => setShowExport(false)}
                 />
               )}
 
@@ -407,16 +376,6 @@
           <div className="max-w-4xl mx-auto grid md:grid-cols-2 gap-8 items-start">
             <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-200">
               <h2 className="text-2xl font-semibold">Welkom {CONFIG.name}</h2>
-              
-              <div className="mt-4 bg-blue-50 rounded-xl p-4 border border-blue-200">
-                <div className="flex items-start gap-2">
-                  <div className="text-2xl">☁️</div>
-                  <div>
-                    <div className="text-sm font-semibold text-blue-900">Cloud sync beschikbaar</div>
-                    <div className="text-xs text-blue-700 mt-1">Gebruik de sync knop om je data te synchroniseren tussen apparaten</div>
-                  </div>
-                </div>
-              </div>
 
               <div className="mt-4">
                 <label className="block text-sm">Pincode</label>
@@ -463,7 +422,7 @@
         );
       }
 
-      function MainScreen({ db, allDays, setLoggedIn, totalZone2, totalZone5, totalStrength, remainingDaysFromToday, openModal, resetEntries, onHardReset, streaks, predictions, records, syncStatus, lastSyncTime, onManualSync, onRefresh }) {
+      function MainScreen({ db, allDays, setLoggedIn, totalZone2, totalZone5, totalStrength, remainingDaysFromToday, openModal, resetEntries, onHardReset, onExport, streaks, predictions, records }) {
         const entries = db.entries || {};
         const zone2Total = totalZone2();
         const zone2Remaining = Math.max(0, CONFIG.zone2Goal - zone2Total);
@@ -565,47 +524,13 @@
                   <p className="text-slate-600 text-sm">1250 min Z2 | 120 min Z5 | 9x Kracht</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button 
-                    className="px-3 py-2 rounded-xl border bg-blue-50 text-blue-700 hover:bg-blue-100 flex items-center gap-2"
-                    onClick={onManualSync}
-                    disabled={syncStatus === "saving"}
-                  >
-                    {syncStatus === "saving" ? "Bezig..." : "☁️ Sync nu"}
-                  </button>
-                  <button 
-                    className="px-3 py-2 rounded-xl border hover:bg-slate-50"
-                    onClick={onRefresh}
-                    title="Laad laatste versie"
-                  >
-                    🔄
+                  <button className="px-3 py-2 rounded-xl border bg-blue-50 text-blue-700 hover:bg-blue-100" onClick={onExport}>
+                    📱 Sync
                   </button>
                   <button className="px-3 py-2 rounded-xl border" onClick={() => setLoggedIn(false)}>Uit</button>
+                  <button className="px-3 py-2 rounded-xl border text-rose-700" onClick={resetEntries}>Reset</button>
                 </div>
               </div>
-
-              {/* Sync status banner */}
-              {syncStatus && (
-                <div className={classNames(
-                  "mb-4 rounded-xl p-3 text-sm flex items-center gap-2",
-                  syncStatus === "saving" ? "bg-blue-50 text-blue-700 border border-blue-200" :
-                  syncStatus === "saved" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" :
-                  syncStatus === "loading" ? "bg-blue-50 text-blue-700 border border-blue-200" :
-                  syncStatus === "loaded" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" :
-                  "bg-rose-50 text-rose-700 border border-rose-200"
-                )}>
-                  {syncStatus === "saving" && "⏳ Bezig met opslaan naar cloud..."}
-                  {syncStatus === "saved" && "✅ Data succesvol opgeslagen!"}
-                  {syncStatus === "loading" && "⏳ Bezig met laden vanaf cloud..."}
-                  {syncStatus === "loaded" && "✅ Laatste versie geladen!"}
-                  {syncStatus === "error" && "❌ Sync mislukt. Probeer het opnieuw."}
-                </div>
-              )}
-
-              {lastSyncTime && (
-                <div className="mb-4 text-xs text-slate-500 text-center">
-                  Laatste sync: {lastSyncTime.toLocaleTimeString("nl-NL")}
-                </div>
-              )}
 
               {/* Streak Display */}
               <div className="mb-4 bg-gradient-to-r from-orange-50 to-red-50 rounded-xl p-4 border border-orange-200">
@@ -769,6 +694,49 @@
           <div className="text-xs text-slate-600">{sub}</div>
         </div>
       );
+
+      function ExportModal({ url, onClose }) {
+        const [copied, setCopied] = React.useState(false);
+
+        function copyUrl() {
+          navigator.clipboard.writeText(url).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          });
+        }
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-slate-200 p-6">
+              <h3 className="text-xl font-semibold mb-3">📱 Sync naar ander apparaat</h3>
+              
+              <div className="bg-blue-50 rounded-xl p-4 mb-4 border border-blue-200">
+                <div className="text-sm font-semibold text-blue-900 mb-2">Zo werkt het:</div>
+                <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+                  <li>Klik op "Kopieer URL" hieronder</li>
+                  <li>Stuur de URL naar jezelf (WhatsApp, email, etc.)</li>
+                  <li>Open de URL op je andere apparaat</li>
+                  <li>Je data wordt automatisch geladen! ✓</li>
+                </ol>
+              </div>
+
+              <div className="bg-slate-50 rounded-xl p-3 mb-4 break-all text-xs font-mono max-h-32 overflow-y-auto">
+                {url}
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <button className="px-4 py-2 rounded-xl border" onClick={onClose}>Sluiten</button>
+                <button 
+                  className="px-4 py-2 rounded-xl bg-slate-900 text-white"
+                  onClick={copyUrl}
+                >
+                  {copied ? "✓ Gekopieerd!" : "Kopieer URL"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
 
       function MinutesModal({ dateYMD, initialZone2, initialZone5, initialStrength, initialNote, onCancel, onSave }) {
         const [z2, setZ2] = React.useState(Number.isFinite(initialZone2) ? initialZone2 : 0);
