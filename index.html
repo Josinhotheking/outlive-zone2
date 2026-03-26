@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Outlive Zone 2 Challenge</title>
+    <title>Outlive Zone 2 + 5 Challenge</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -25,17 +25,16 @@
           { name: "Tom", pin: "2222" },
           { name: "Gerben Jan", pin: "3333" }
         ],
-        goals: { Easy: 1750, Medium: 2100, Hard: 2500 } // correct per niveau
+        goals: { Easy: 1750, Medium: 2100, Hard: 2500 },
+        zone5Goal: 100 // fixed for everyone
       };
 
       // ================== HELPERS ==================
       const YMD = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
       const fromYMD = s => new Date(`${s}T00:00:00`);
 
-      function currentYear() { return new Date().getFullYear(); }
       function challengeRange() {
-        const y = currentYear();
-        return { start: new Date(`${y}-11-01T00:00:00`), end: new Date(`${y}-12-31T00:00:00`) };
+        return { start: new Date("2026-04-01T00:00:00"), end: new Date("2026-04-30T00:00:00") };
       }
       function enumerateDays(start, end) {
         const out = [];
@@ -71,12 +70,11 @@
       const pickQuote = () => QUOTES[Math.floor(Math.random() * QUOTES.length)];
 
       // ============ STORAGE KEY, MET RESET ============
-      const LS_KEY = "outlive_zone2_data_v4";
+      const LS_KEY = "outlive_zone2_5_april_2026_v1";
       function hardReset() {
         try { localStorage.removeItem(LS_KEY); } catch {}
         location.reload();
       }
-      // Optionele URL reset: ?reset=1
       try {
         const usp = new URLSearchParams(location.search);
         if (usp.get("reset") === "1") {
@@ -111,7 +109,7 @@
         const [db, setDb] = React.useState(loadLocal());
         const [user, setUser] = React.useState(null);
         const [quote, setQuote] = React.useState("");
-        const [modal, setModal] = React.useState(null); // { dateYMD, value }
+        const [modal, setModal] = React.useState(null); // { dateYMD, zone2, zone5 }
 
         React.useEffect(() => saveLocal(db), [db]);
 
@@ -126,15 +124,15 @@
           setDb(cur => {
             const next = { ...cur };
             next[name] = next[name] || { level: null, entries: {} };
-            if (!next[name].level) next[name].level = level; // keuze vastzetten
+            if (!next[name].level) next[name].level = level;
             return next;
           });
         }
-        function setMinutes(name, ymd, mins) {
+        function setMinutes(name, ymd, zone2, zone5) {
           setDb(cur => {
             const next = { ...cur };
             next[name] = next[name] || { level: null, entries: {} };
-            next[name].entries = { ...next[name].entries, [ymd]: mins };
+            next[name].entries = { ...next[name].entries, [ymd]: { zone2, zone5 } };
             return next;
           });
         }
@@ -149,10 +147,19 @@
         }
 
         // Berekeningen
-        function totalFor(n) {
+        function totalZone2For(n) {
           const rec = db[n];
           if (!rec) return 0;
-          return Object.values(rec.entries || {}).reduce((a, b) => a + (parseInt(b || 0, 10) || 0), 0);
+          return Object.values(rec.entries || {}).reduce((a, b) => {
+            const z2 = parseInt(b?.zone2 || 0, 10) || 0;
+            const z5 = parseInt(b?.zone5 || 0, 10) || 0;
+            return a + z2 + z5; // zone 5 counts toward zone 2 total
+          }, 0);
+        }
+        function totalZone5For(n) {
+          const rec = db[n];
+          if (!rec) return 0;
+          return Object.values(rec.entries || {}).reduce((a, b) => a + (parseInt(b?.zone5 || 0, 10) || 0), 0);
         }
         function goalFor(n) {
           const rec = db[n];
@@ -171,9 +178,11 @@
           CONFIG.participants
             .map(p => {
               const g = goalFor(p.name);
-              const s = totalFor(p.name);
+              const s = totalZone2For(p.name);
+              const z5 = totalZone5For(p.name);
               const pct = g ? Math.min(100, Math.round((s / g) * 100)) : 0;
-              return { name: p.name, goal: g, sum: s, pct };
+              const z5pct = Math.min(100, Math.round((z5 / CONFIG.zone5Goal) * 100));
+              return { name: p.name, goal: g, sum: s, pct, zone5: z5, z5pct };
             })
             .sort((a, b) => b.pct - a.pct || b.sum - a.sum),
         [db]);
@@ -190,10 +199,11 @@
                   db={db}
                   allDays={allDays}
                   setUser={setUser}
-                  totalFor={totalFor}
+                  totalZone2For={totalZone2For}
+                  totalZone5For={totalZone5For}
                   goalFor={goalFor}
                   remainingDaysFromToday={remainingDaysFromToday}
-                  openModal={(ymd, current) => setModal({ dateYMD: ymd, value: current })}
+                  openModal={(ymd, z2, z5) => setModal({ dateYMD: ymd, zone2: z2, zone5: z5 })}
                   resetEntries={resetEntries}
                   leaderboard={leaderboard}
                   onHardReset={hardReset}
@@ -203,10 +213,11 @@
               {modal && user && (
                 <MinutesModal
                   dateYMD={modal.dateYMD}
-                  initialValue={modal.value}
+                  initialZone2={modal.zone2}
+                  initialZone5={modal.zone5}
                   onCancel={() => setModal(null)}
-                  onSave={(val) => {
-                    setMinutes(user.name, modal.dateYMD, val);
+                  onSave={(z2, z5) => {
+                    setMinutes(user.name, modal.dateYMD, z2, z5);
                     setModal(null);
                     setQuote(pickQuote());
                   }}
@@ -229,9 +240,9 @@
       // ================== UI COMPONENTS ==================
       const Header = () => (
         <div className="mb-8 text-center">
-          <div className="text-xs tracking-widest text-slate-600">Zone 2 Challenge</div>
-          <h1 className="text-4xl md:text-5xl font-semibold tracking-tight mt-1">Outlive Zone 2</h1>
-          <p className="text-slate-600 mt-2">November en december</p>
+          <div className="text-xs tracking-widest text-slate-600">Zone 2 + Zone 5 Challenge</div>
+          <h1 className="text-4xl md:text-5xl font-semibold tracking-tight mt-1">Outlive April 2026</h1>
+          <p className="text-slate-600 mt-2">Zone 2 training + 100 minuten Zone 5</p>
         </div>
       );
 
@@ -245,7 +256,7 @@
           const p = CONFIG.participants.find(x => x.name === name);
           if (!p || p.pin !== pin) { setError("Verkeerde pincode"); return; }
           ensureUser(name);
-          setLevel(name, level); // zet de op dat moment gekozen level vast
+          setLevel(name, level);
           onLogin({ name });
         }
 
@@ -264,7 +275,7 @@
                 <input className="mt-1 w-full border rounded-xl px-3 py-2" type="password" inputMode="numeric" value={pin} onChange={e => setPin(e.target.value)} placeholder="Vier cijfers" />
               </div>
               <div className="mt-4">
-                <label className="block text-sm">Niveau</label>
+                <label className="block text-sm">Zone 2 Niveau</label>
                 <div className="mt-2 grid grid-cols-3 gap-2">
                   {["Easy","Medium","Hard"].map(opt => (
                     <button
@@ -277,6 +288,7 @@
                   ))}
                 </div>
                 <p className="text-xs text-slate-600 mt-1">Let op, keuze is eenmalig en wordt vastgezet bij eerste inlog</p>
+                <p className="text-xs text-amber-600 mt-2">Zone 5 doel: 100 minuten voor iedereen</p>
               </div>
 
               {error && <p className="mt-3 text-red-600">{error}</p>}
@@ -285,72 +297,80 @@
                 Bevestig en start
               </button>
 
-              {/* Link voor lokale reset t.b.v. testen */}
               <div className="mt-3 text-center">
                 <a className="text-xs text-slate-500 underline" href="?reset=1">Reset lokale data</a>
               </div>
             </div>
 
             <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-200">
-              <h3 className="text-xl font-semibold text-slate-900 mb-3">Your Contract with Yourself</h3>
+              <h3 className="text-xl font-semibold text-slate-900 mb-3">April Challenge</h3>
+              <p className="text-sm leading-relaxed text-slate-700 mb-3">
+                This month you train both systems. Zone 2 builds the aerobic base. Zone 5 pushes the ceiling. 
+                You need both. The easy miles teach patience. The hard intervals teach pain tolerance. 
+              </p>
               <p className="text-sm leading-relaxed text-slate-700">
-                If you choose to stay hard you pick 2500 minutes. That is your contract with yourself.
-                No one will sign it for you. Zone 2 is not a hobby. It is a choice to stop being average.
-                It is 2500 minutes of silence where no one claps and no one cares. Every step, every pedal stroke,
-                every breath teaches you to control the mind that wants comfort. You either build the engine or you stay soft.
-                You either pay in sweat or you pay in regret. You want to walk into 2026 sharp, lean, ready. Then earn it now.
-                Every minute counts. Every session is a brick in the wall between you and weakness. Stay hard.
+                Zone 5 minutes count toward your Zone 2 total - everything above Zone 2 counts. 
+                But you must hit 100 minutes of Zone 5 this month. That's your contract with discomfort. 
+                Every minute counts. Stay hard.
               </p>
             </div>
           </div>
         );
       }
 
-      function MainScreen({ user, db, allDays, setUser, totalFor, goalFor, remainingDaysFromToday, openModal, resetEntries, leaderboard, onHardReset }) {
+      function MainScreen({ user, db, allDays, setUser, totalZone2For, totalZone5For, goalFor, remainingDaysFromToday, openModal, resetEntries, leaderboard, onHardReset }) {
         const name = user.name;
         const rec = db[name] || { level: null, entries: {} };
-        const goal = goalFor(name);
-        const total = totalFor(name);
-        const remaining = Math.max(0, goal - total);
+        const zone2Goal = goalFor(name);
+        const zone2Total = totalZone2For(name);
+        const zone2Remaining = Math.max(0, zone2Goal - zone2Total);
+        
+        const zone5Total = totalZone5For(name);
+        const zone5Remaining = Math.max(0, CONFIG.zone5Goal - zone5Total);
 
         const today = new Date();
         const { start, end } = challengeRange();
         const clampedStart = today < start ? start : today;
         const remDays = Math.max(0, remainingDaysFromToday(clampedStart));
-        const neededPerDay = remDays > 0 ? Math.ceil(remaining / remDays) : remaining;
+        const zone2NeededPerDay = remDays > 0 ? Math.ceil(zone2Remaining / remDays) : zone2Remaining;
+        const zone5NeededPerDay = remDays > 0 ? Math.ceil(zone5Remaining / remDays) : zone5Remaining;
 
-        const y = currentYear();
-        const novCells = getMonthMatrix(y, 10);
-        const decCells = getMonthMatrix(y, 11);
+        const aprCells = getMonthMatrix(2026, 3); // April = month 3 (0-indexed)
 
         function cumulativeUntil(ymd) {
           let sum = 0;
           for (const d of allDays) {
-            sum += parseInt(rec.entries?.[d] || 0, 10);
+            const entry = rec.entries?.[d] || {};
+            sum += parseInt(entry.zone2 || 0, 10) + parseInt(entry.zone5 || 0, 10);
             if (d === ymd) break;
           }
           return sum;
         }
         function planCumUntil(ymd) {
-          if (!goal) return 0;
+          if (!zone2Goal) return 0;
           const idx = allDays.indexOf(ymd);
           if (idx < 0) return 0;
-          const per = goal / allDays.length;
+          const per = zone2Goal / allDays.length;
           return Math.round(per * (idx + 1));
         }
         function badges() {
           const arr = [];
-          if (total >= 750) arr.push("750 minuten");
-          if (total >= 1500) arr.push("1500 minuten");
-          if (total >= 1750) arr.push("1750 minuten");
+          if (zone2Total >= 750) arr.push("750 Zone 2+");
+          if (zone2Total >= 1500) arr.push("1500 Zone 2+");
+          if (zone2Total >= 1750) arr.push("1750 Zone 2+");
+          if (zone5Total >= 50) arr.push("50 Zone 5");
+          if (zone5Total >= 100) arr.push("100 Zone 5 ✓");
           return arr;
         }
 
         function dayCell(d) {
-          if (!d) return <div className="h-16 rounded-xl bg-slate-50"></div>;
+          if (!d) return <div className="h-20 rounded-xl bg-slate-50"></div>;
           const ymd = YMD(d);
-          if (d < start || d > end) return <div className="h-16 rounded-xl bg-slate-50"></div>;
-          const minutes = parseInt(rec.entries?.[ymd] || 0, 10);
+          if (d < start || d > end) return <div className="h-20 rounded-xl bg-slate-50"></div>;
+          const entry = rec.entries?.[ymd] || {};
+          const zone2Min = parseInt(entry.zone2 || 0, 10);
+          const zone5Min = parseInt(entry.zone5 || 0, 10);
+          const totalMin = zone2Min + zone5Min;
           const isToday = YMD(new Date()) === ymd;
 
           const cum = cumulativeUntil(ymd);
@@ -358,18 +378,22 @@
           const delta = cum - plan;
 
           let borderClr = "border-slate-200";
-          if (minutes > 0 && delta >= 0) borderClr = "border-emerald-400";
-          else if (minutes > 0 && delta < 0) borderClr = "border-rose-300";
+          if (totalMin > 0 && delta >= 0) borderClr = "border-emerald-400";
+          else if (totalMin > 0 && delta < 0) borderClr = "border-rose-300";
+
+          // Add zone 5 indicator
+          const hasZone5 = zone5Min > 0;
 
           return (
             <button
               key={ymd}
-              onClick={() => openModal(ymd, minutes)}
-              className={classNames("h-16 rounded-xl border p-2 text-left hover:shadow-sm transition", borderClr, isToday ? "ring-2 ring-slate-900" : "")}
-              title={`Plan t/m vandaag ${plan} min, cumulatief ${cum} min`}
+              onClick={() => openModal(ymd, zone2Min, zone5Min)}
+              className={classNames("h-20 rounded-xl border p-2 text-left hover:shadow-sm transition", borderClr, isToday ? "ring-2 ring-slate-900" : "", hasZone5 ? "bg-amber-50" : "")}
+              title={`Plan ${plan} min, cumulatief ${cum} min`}
             >
               <div className="text-xs text-slate-600">{d.toLocaleDateString("nl-NL",{ day:"2-digit", month:"short" })}</div>
-              <div className="text-sm font-semibold mt-1">{minutes} min</div>
+              <div className="text-sm font-semibold mt-1">{totalMin} min</div>
+              {hasZone5 && <div className="text-xs text-amber-600">Z5: {zone5Min}</div>}
             </button>
           );
         }
@@ -381,7 +405,7 @@
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className="text-2xl font-semibold">Welkom {name}</h2>
-                    <p className="text-slate-600 text-sm">Doel {rec.level || "-"} {goal} minuten</p>
+                    <p className="text-slate-600 text-sm">Zone 2 doel: {rec.level || "-"} {zone2Goal} min | Zone 5 doel: {CONFIG.zone5Goal} min</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <button className="px-3 py-2 rounded-xl border" onClick={() => setUser(null)}>Uitloggen</button>
@@ -390,38 +414,45 @@
                   </div>
                 </div>
 
-                <div className="mt-4 grid grid-cols-3 gap-3 text-center">
-                  <Stat label="Tot nu toe" value={total} sub="minuten" />
-                  <Stat label="Nog te gaan" value={remaining} sub="minuten" />
-                  <Stat label="Benodigd per dag" value={neededPerDay} sub={remDays > 0 ? `over ${remDays} dagen` : "0 dagen"} />
+                <div className="mt-4 space-y-4">
+                  {/* Zone 2 tracker */}
+                  <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200">
+                    <div className="text-sm font-semibold text-emerald-900 mb-2">Zone 2+ Progress</div>
+                    <div className="grid grid-cols-3 gap-3 text-center">
+                      <Stat label="Tot nu toe" value={zone2Total} sub="minuten" />
+                      <Stat label="Nog te gaan" value={zone2Remaining} sub="minuten" />
+                      <Stat label="Per dag nodig" value={zone2NeededPerDay} sub={remDays > 0 ? `${remDays} dagen` : "0 dagen"} />
+                    </div>
+                  </div>
+
+                  {/* Zone 5 tracker */}
+                  <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
+                    <div className="text-sm font-semibold text-amber-900 mb-2">Zone 5 Progress</div>
+                    <div className="grid grid-cols-3 gap-3 text-center">
+                      <Stat label="Tot nu toe" value={zone5Total} sub="minuten" />
+                      <Stat label="Nog te gaan" value={zone5Remaining} sub="minuten" />
+                      <Stat label="Per dag nodig" value={zone5NeededPerDay} sub={remDays > 0 ? `${remDays} dagen` : "0 dagen"} />
+                    </div>
+                  </div>
                 </div>
 
                 {badges().length > 0 && (
                   <div className="mt-4 flex flex-wrap gap-2">
                     {badges().map(b => (
-                      <span key={b} className="px-3 py-1 rounded-full bg-slate-900 text-white text-xs">{b}</span>
+                      <span key={b} className={classNames("px-3 py-1 rounded-full text-xs", b.includes("Zone 5") ? "bg-amber-600 text-white" : "bg-slate-900 text-white")}>{b}</span>
                     ))}
                   </div>
                 )}
               </Card>
 
               <Card>
-                <h3 className="text-xl font-semibold mb-2">November</h3>
+                <h3 className="text-xl font-semibold mb-2">April 2026</h3>
+                <p className="text-xs text-slate-600 mb-3">Gele achtergrond = Zone 5 training</p>
                 <div className="weekday-row text-xs text-slate-500 mb-2">
                   {WEEKDAYS.map(w => <div key={w} className="text-center">{w}</div>)}
                 </div>
                 <div className="month-grid">
-                  {novCells.map((d, i) => <div key={i}>{dayCell(d)}</div>)}
-                </div>
-              </Card>
-
-              <Card>
-                <h3 className="text-xl font-semibold mb-2">December</h3>
-                <div className="weekday-row text-xs text-slate-500 mb-2">
-                  {WEEKDAYS.map(w => <div key={w} className="text-center">{w}</div>)}
-                </div>
-                <div className="month-grid">
-                  {decCells.map((d, i) => <div key={i}>{dayCell(d)}</div>)}
+                  {aprCells.map((d, i) => <div key={i}>{dayCell(d)}</div>)}
                 </div>
               </Card>
             </div>
@@ -436,7 +467,7 @@
       const Card = ({ children }) => <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-200">{children}</div>;
 
       const Stat = ({ label, value, sub }) => (
-        <div className="bg-slate-50 rounded-xl p-4">
+        <div className="bg-white rounded-xl p-3">
           <div className="text-xs text-slate-600">{label}</div>
           <div className="text-2xl font-semibold">{value}</div>
           <div className="text-xs text-slate-600">{sub}</div>
@@ -446,21 +477,28 @@
       const Leaderboard = ({ leaderboard }) => (
         <Card>
           <h3 className="text-xl font-semibold mb-3 text-center">Leaderboard</h3>
-          <div className="space-y-2">
+          <div className="space-y-3">
             {leaderboard.map(r => (
-              <div key={r.name} className="flex justify-between text-sm py-2 border-b border-slate-100">
-                <div className="font-semibold">{r.name}</div>
-                <div>{r.sum}/{r.goal} ({r.pct}%)</div>
+              <div key={r.name} className="border-b border-slate-100 pb-2">
+                <div className="flex justify-between text-sm font-semibold mb-1">
+                  <div>{r.name}</div>
+                  <div>{r.pct}%</div>
+                </div>
+                <div className="text-xs text-slate-600">
+                  Z2+: {r.sum}/{r.goal} | Z5: {r.zone5}/100 ({r.z5pct}%)
+                </div>
               </div>
             ))}
           </div>
         </Card>
       );
 
-      // ================== MODAL MET SLIDER ==================
-      function MinutesModal({ dateYMD, initialValue, onCancel, onSave }) {
-        const [val, setVal] = React.useState(Number.isFinite(initialValue) ? initialValue : 0);
+      // ================== MODAL MET TWEE ZONES ==================
+      function MinutesModal({ dateYMD, initialZone2, initialZone5, onCancel, onSave }) {
+        const [z2, setZ2] = React.useState(Number.isFinite(initialZone2) ? initialZone2 : 0);
+        const [z5, setZ5] = React.useState(Number.isFinite(initialZone5) ? initialZone5 : 0);
         const d = fromYMD(dateYMD);
+        
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
             <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200 p-6">
@@ -468,35 +506,72 @@
                 <h4 className="text-xl font-semibold">Minuten loggen</h4>
                 <p className="text-sm text-slate-600 mt-1">{d.toLocaleDateString("nl-NL",{ weekday:"long", day:"2-digit", month:"long" })}</p>
               </div>
+              
+              {/* Zone 2 input */}
               <div className="mt-6">
+                <label className="block text-sm font-semibold text-emerald-900">Zone 2 minuten</label>
                 <input
                   type="range"
                   min="0"
                   max="180"
                   step="1"
-                  value={val}
-                  onChange={e => setVal(parseInt(e.target.value, 10) || 0)}
-                  className="w-full"
+                  value={z2}
+                  onChange={e => setZ2(parseInt(e.target.value, 10) || 0)}
+                  className="w-full mt-2"
                 />
-                <div className="mt-3 flex items-center justify-center gap-2">
+                <div className="mt-2 flex items-center justify-center gap-2">
                   <input
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
                     className="w-24 border rounded-lg px-3 py-2 text-center"
-                    value={String(val)}
+                    value={String(z2)}
                     onChange={e => {
                       const v = e.target.value.replace(/\D+/g, "").slice(0,4);
-                      setVal(v === "" ? 0 : Math.min(180, parseInt(v,10)));
+                      setZ2(v === "" ? 0 : Math.min(180, parseInt(v,10)));
                     }}
-                    onBlur={() => setVal(prev => Math.min(180, Math.max(0, prev)))}
+                    onBlur={() => setZ2(prev => Math.min(180, Math.max(0, prev)))}
                   />
                   <span className="text-sm text-slate-600">minuten</span>
                 </div>
               </div>
+
+              {/* Zone 5 input */}
+              <div className="mt-6">
+                <label className="block text-sm font-semibold text-amber-900">Zone 5 minuten</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="60"
+                  step="1"
+                  value={z5}
+                  onChange={e => setZ5(parseInt(e.target.value, 10) || 0)}
+                  className="w-full mt-2"
+                />
+                <div className="mt-2 flex items-center justify-center gap-2">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    className="w-24 border rounded-lg px-3 py-2 text-center"
+                    value={String(z5)}
+                    onChange={e => {
+                      const v = e.target.value.replace(/\D+/g, "").slice(0,3);
+                      setZ5(v === "" ? 0 : Math.min(60, parseInt(v,10)));
+                    }}
+                    onBlur={() => setZ5(prev => Math.min(60, Math.max(0, prev)))}
+                  />
+                  <span className="text-sm text-slate-600">minuten</span>
+                </div>
+              </div>
+
+              <div className="mt-4 text-xs text-slate-600 text-center">
+                Zone 5 minuten tellen ook mee voor Zone 2 doel
+              </div>
+
               <div className="mt-6 flex justify-end gap-2">
                 <button className="px-4 py-2 rounded-xl border" onClick={onCancel}>Annuleren</button>
-                <button className="px-4 py-2 rounded-xl bg-slate-900 text-white" onClick={() => onSave(val)}>Opslaan</button>
+                <button className="px-4 py-2 rounded-xl bg-slate-900 text-white" onClick={() => onSave(z2, z5)}>Opslaan</button>
               </div>
             </div>
           </div>
