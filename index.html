@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Outlive Zone 2 + 5 Challenge</title>
+    <title>Outlive Zone 2 Challenge</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -20,13 +20,10 @@
     <script type="text/babel">
       // ================== CONFIG ==================
       const CONFIG = {
-        participants: [
-          { name: "Jos", pin: "1111" },
-          { name: "Tom", pin: "2222" },
-          { name: "Gerben Jan", pin: "3333" }
-        ],
-        goals: { Easy: 1750, Medium: 2100, Hard: 2500 },
-        zone5Goal: 100 // fixed for everyone
+        name: "Jos",
+        pin: "1111",
+        zone2Goal: 2500, // Hard mode only
+        zone5Goal: 100
       };
 
       // ================== HELPERS ==================
@@ -69,12 +66,41 @@
       ];
       const pickQuote = () => QUOTES[Math.floor(Math.random() * QUOTES.length)];
 
-      // ============ STORAGE KEY, MET RESET ============
-      const LS_KEY = "outlive_zone2_5_april_2026_v1";
+      // ============ STORAGE + URL SYNC ============
+      const LS_KEY = "outlive_zone2_5_april_2026_jos_v1";
+      
       function hardReset() {
         try { localStorage.removeItem(LS_KEY); } catch {}
+        // Clear URL data param too
+        const url = new URL(window.location);
+        url.searchParams.delete('data');
+        window.history.replaceState(null, '', url);
         location.reload();
       }
+
+      // URL data import on load
+      function loadFromURL() {
+        try {
+          const params = new URLSearchParams(window.location.search);
+          const dataParam = params.get('data');
+          if (dataParam) {
+            const decoded = atob(dataParam);
+            const parsed = JSON.parse(decoded);
+            // Save to localStorage
+            localStorage.setItem(LS_KEY, JSON.stringify(parsed));
+            // Clean URL
+            params.delete('data');
+            const cleanUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+            window.history.replaceState(null, '', cleanUrl);
+            return parsed;
+          }
+        } catch (e) {
+          console.error('Failed to load from URL:', e);
+        }
+        return null;
+      }
+
+      // Check for reset param
       try {
         const usp = new URLSearchParams(location.search);
         if (usp.get("reset") === "1") {
@@ -84,8 +110,29 @@
           history.replaceState(null, "", clean);
         }
       } catch {}
-      const loadLocal = () => { try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch { return {}; } };
+
+      const loadLocal = () => { 
+        // First try URL import
+        const urlData = loadFromURL();
+        if (urlData) return urlData;
+        // Then localStorage
+        try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch { return {}; } 
+      };
       const saveLocal = db => localStorage.setItem(LS_KEY, JSON.stringify(db));
+
+      // Export to URL
+      function exportToURL(db) {
+        try {
+          const json = JSON.stringify(db);
+          const encoded = btoa(json);
+          const url = new URL(window.location);
+          url.searchParams.set('data', encoded);
+          return url.toString();
+        } catch (e) {
+          console.error('Failed to export:', e);
+          return null;
+        }
+      }
 
       // Maandhelpers
       function getMonthMatrix(year, monthIndex) {
@@ -107,64 +154,36 @@
         const allDays = React.useMemo(() => enumerateDays(start, end), [start, end]);
 
         const [db, setDb] = React.useState(loadLocal());
-        const [user, setUser] = React.useState(null);
+        const [loggedIn, setLoggedIn] = React.useState(false);
         const [quote, setQuote] = React.useState("");
-        const [modal, setModal] = React.useState(null); // { dateYMD, zone2, zone5 }
+        const [modal, setModal] = React.useState(null);
+        const [showExport, setShowExport] = React.useState(false);
 
         React.useEffect(() => saveLocal(db), [db]);
 
         // DB helpers
-        function ensureUser(name) {
-          setDb(cur => {
-            if (!cur[name]) cur[name] = { level: null, entries: {} };
-            return { ...cur };
-          });
-        }
-        function setLevel(name, level) {
+        function setMinutes(ymd, zone2, zone5) {
           setDb(cur => {
             const next = { ...cur };
-            next[name] = next[name] || { level: null, entries: {} };
-            if (!next[name].level) next[name].level = level;
+            next.entries = { ...next.entries, [ymd]: { zone2, zone5 } };
             return next;
           });
         }
-        function setMinutes(name, ymd, zone2, zone5) {
-          setDb(cur => {
-            const next = { ...cur };
-            next[name] = next[name] || { level: null, entries: {} };
-            next[name].entries = { ...next[name].entries, [ymd]: { zone2, zone5 } };
-            return next;
-          });
-        }
-        function resetEntries(name) {
-          if (!confirm("Weet je zeker dat je alle minuten wilt resetten voor deze deelnemer")) return;
-          setDb(cur => {
-            const next = { ...cur };
-            const level = next[name]?.level || null;
-            next[name] = { level, entries: {} };
-            return next;
-          });
+        function resetEntries() {
+          if (!confirm("Weet je zeker dat je alle minuten wilt resetten?")) return;
+          setDb({ entries: {} });
         }
 
         // Berekeningen
-        function totalZone2For(n) {
-          const rec = db[n];
-          if (!rec) return 0;
-          return Object.values(rec.entries || {}).reduce((a, b) => {
+        function totalZone2() {
+          return Object.values(db.entries || {}).reduce((a, b) => {
             const z2 = parseInt(b?.zone2 || 0, 10) || 0;
             const z5 = parseInt(b?.zone5 || 0, 10) || 0;
-            return a + z2 + z5; // zone 5 counts toward zone 2 total
+            return a + z2 + z5;
           }, 0);
         }
-        function totalZone5For(n) {
-          const rec = db[n];
-          if (!rec) return 0;
-          return Object.values(rec.entries || {}).reduce((a, b) => a + (parseInt(b?.zone5 || 0, 10) || 0), 0);
-        }
-        function goalFor(n) {
-          const rec = db[n];
-          if (!rec || !rec.level) return 0;
-          return CONFIG.goals[rec.level];
+        function totalZone5() {
+          return Object.values(db.entries || {}).reduce((a, b) => a + (parseInt(b?.zone5 || 0, 10) || 0), 0);
         }
         function remainingDaysFromToday(today = new Date()) {
           const { start, end } = challengeRange();
@@ -174,53 +193,45 @@
           return daysBetweenInclusive(t0, endNorm);
         }
 
-        const leaderboard = React.useMemo(() =>
-          CONFIG.participants
-            .map(p => {
-              const g = goalFor(p.name);
-              const s = totalZone2For(p.name);
-              const z5 = totalZone5For(p.name);
-              const pct = g ? Math.min(100, Math.round((s / g) * 100)) : 0;
-              const z5pct = Math.min(100, Math.round((z5 / CONFIG.zone5Goal) * 100));
-              return { name: p.name, goal: g, sum: s, pct, zone5: z5, z5pct };
-            })
-            .sort((a, b) => b.pct - a.pct || b.sum - a.sum),
-        [db]);
-
         return (
           <div style={radialStyle()} className="text-slate-900">
             <div className="max-w-6xl mx-auto px-4 py-8">
               <Header />
-              {!user ? (
-                <LoginScreen onLogin={setUser} ensureUser={ensureUser} setLevel={setLevel} />
+              {!loggedIn ? (
+                <LoginScreen onLogin={() => setLoggedIn(true)} />
               ) : (
                 <MainScreen
-                  user={user}
                   db={db}
                   allDays={allDays}
-                  setUser={setUser}
-                  totalZone2For={totalZone2For}
-                  totalZone5For={totalZone5For}
-                  goalFor={goalFor}
+                  setLoggedIn={setLoggedIn}
+                  totalZone2={totalZone2}
+                  totalZone5={totalZone5}
                   remainingDaysFromToday={remainingDaysFromToday}
                   openModal={(ymd, z2, z5) => setModal({ dateYMD: ymd, zone2: z2, zone5: z5 })}
                   resetEntries={resetEntries}
-                  leaderboard={leaderboard}
                   onHardReset={hardReset}
+                  onExport={() => setShowExport(true)}
                 />
               )}
 
-              {modal && user && (
+              {modal && loggedIn && (
                 <MinutesModal
                   dateYMD={modal.dateYMD}
                   initialZone2={modal.zone2}
                   initialZone5={modal.zone5}
                   onCancel={() => setModal(null)}
                   onSave={(z2, z5) => {
-                    setMinutes(user.name, modal.dateYMD, z2, z5);
+                    setMinutes(modal.dateYMD, z2, z5);
                     setModal(null);
                     setQuote(pickQuote());
                   }}
+                />
+              )}
+
+              {showExport && (
+                <ExportModal
+                  url={exportToURL(db)}
+                  onClose={() => setShowExport(false)}
                 />
               )}
 
@@ -242,60 +253,53 @@
         <div className="mb-8 text-center">
           <div className="text-xs tracking-widest text-slate-600">Zone 2 + Zone 5 Challenge</div>
           <h1 className="text-4xl md:text-5xl font-semibold tracking-tight mt-1">Outlive April 2026</h1>
-          <p className="text-slate-600 mt-2">Zone 2 training + 100 minuten Zone 5</p>
+          <p className="text-slate-600 mt-2">2500 minuten Zone 2 + 100 minuten Zone 5</p>
         </div>
       );
 
-      function LoginScreen({ onLogin, ensureUser, setLevel }) {
-        const [name, setName] = React.useState(CONFIG.participants[0].name);
+      function LoginScreen({ onLogin }) {
         const [pin, setPin] = React.useState("");
-        const [level, setLevelLocal] = React.useState("Easy");
         const [error, setError] = React.useState("");
 
         function handleLogin() {
-          const p = CONFIG.participants.find(x => x.name === name);
-          if (!p || p.pin !== pin) { setError("Verkeerde pincode"); return; }
-          ensureUser(name);
-          setLevel(name, level);
-          onLogin({ name });
+          if (pin !== CONFIG.pin) { 
+            setError("Verkeerde pincode"); 
+            return; 
+          }
+          onLogin();
         }
 
         return (
           <div className="max-w-4xl mx-auto grid md:grid-cols-2 gap-8 items-start">
             <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-200">
-              <h2 className="text-2xl font-semibold">Inloggen</h2>
-              <div className="mt-4">
-                <label className="block text-sm">Deelnemer</label>
-                <select className="mt-1 w-full border rounded-xl px-3 py-2" value={name} onChange={e => setName(e.target.value)}>
-                  {CONFIG.participants.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
-                </select>
-              </div>
+              <h2 className="text-2xl font-semibold">Welkom {CONFIG.name}</h2>
               <div className="mt-4">
                 <label className="block text-sm">Pincode</label>
-                <input className="mt-1 w-full border rounded-xl px-3 py-2" type="password" inputMode="numeric" value={pin} onChange={e => setPin(e.target.value)} placeholder="Vier cijfers" />
-              </div>
-              <div className="mt-4">
-                <label className="block text-sm">Zone 2 Niveau</label>
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  {["Easy","Medium","Hard"].map(opt => (
-                    <button
-                      key={opt}
-                      className={classNames("px-3 py-2 rounded-xl border", level===opt ? "bg-slate-900 text-white" : "bg-white")}
-                      onClick={() => setLevelLocal(opt)}
-                    >
-                      {opt}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-slate-600 mt-1">Let op, keuze is eenmalig en wordt vastgezet bij eerste inlog</p>
-                <p className="text-xs text-amber-600 mt-2">Zone 5 doel: 100 minuten voor iedereen</p>
+                <input 
+                  className="mt-1 w-full border rounded-xl px-3 py-2" 
+                  type="password" 
+                  inputMode="numeric" 
+                  value={pin} 
+                  onChange={e => setPin(e.target.value)} 
+                  onKeyDown={e => e.key === 'Enter' && handleLogin()}
+                  placeholder="Vier cijfers" 
+                />
               </div>
 
               {error && <p className="mt-3 text-red-600">{error}</p>}
 
               <button className="mt-6 w-full bg-slate-900 text-white rounded-xl py-3" onClick={handleLogin}>
-                Bevestig en start
+                Start
               </button>
+
+              <div className="mt-6 bg-slate-50 rounded-xl p-4">
+                <div className="text-sm font-semibold mb-2">Challenge Goals:</div>
+                <div className="text-sm text-slate-700">
+                  • Zone 2+: <strong>2500 minuten</strong><br/>
+                  • Zone 5: <strong>100 minuten</strong>
+                </div>
+                <p className="text-xs text-slate-600 mt-2">Zone 5 telt mee voor beide doelen</p>
+              </div>
 
               <div className="mt-3 text-center">
                 <a className="text-xs text-slate-500 underline" href="?reset=1">Reset lokale data</a>
@@ -318,14 +322,12 @@
         );
       }
 
-      function MainScreen({ user, db, allDays, setUser, totalZone2For, totalZone5For, goalFor, remainingDaysFromToday, openModal, resetEntries, leaderboard, onHardReset }) {
-        const name = user.name;
-        const rec = db[name] || { level: null, entries: {} };
-        const zone2Goal = goalFor(name);
-        const zone2Total = totalZone2For(name);
-        const zone2Remaining = Math.max(0, zone2Goal - zone2Total);
+      function MainScreen({ db, allDays, setLoggedIn, totalZone2, totalZone5, remainingDaysFromToday, openModal, resetEntries, onHardReset, onExport }) {
+        const entries = db.entries || {};
+        const zone2Total = totalZone2();
+        const zone2Remaining = Math.max(0, CONFIG.zone2Goal - zone2Total);
         
-        const zone5Total = totalZone5For(name);
+        const zone5Total = totalZone5();
         const zone5Remaining = Math.max(0, CONFIG.zone5Goal - zone5Total);
 
         const today = new Date();
@@ -335,29 +337,29 @@
         const zone2NeededPerDay = remDays > 0 ? Math.ceil(zone2Remaining / remDays) : zone2Remaining;
         const zone5NeededPerDay = remDays > 0 ? Math.ceil(zone5Remaining / remDays) : zone5Remaining;
 
-        const aprCells = getMonthMatrix(2026, 3); // April = month 3 (0-indexed)
+        const aprCells = getMonthMatrix(2026, 3);
 
         function cumulativeUntil(ymd) {
           let sum = 0;
           for (const d of allDays) {
-            const entry = rec.entries?.[d] || {};
+            const entry = entries?.[d] || {};
             sum += parseInt(entry.zone2 || 0, 10) + parseInt(entry.zone5 || 0, 10);
             if (d === ymd) break;
           }
           return sum;
         }
         function planCumUntil(ymd) {
-          if (!zone2Goal) return 0;
           const idx = allDays.indexOf(ymd);
           if (idx < 0) return 0;
-          const per = zone2Goal / allDays.length;
+          const per = CONFIG.zone2Goal / allDays.length;
           return Math.round(per * (idx + 1));
         }
         function badges() {
           const arr = [];
           if (zone2Total >= 750) arr.push("750 Zone 2+");
           if (zone2Total >= 1500) arr.push("1500 Zone 2+");
-          if (zone2Total >= 1750) arr.push("1750 Zone 2+");
+          if (zone2Total >= 2000) arr.push("2000 Zone 2+");
+          if (zone2Total >= 2500) arr.push("2500 Zone 2+ ✓");
           if (zone5Total >= 50) arr.push("50 Zone 5");
           if (zone5Total >= 100) arr.push("100 Zone 5 ✓");
           return arr;
@@ -367,7 +369,7 @@
           if (!d) return <div className="h-20 rounded-xl bg-slate-50"></div>;
           const ymd = YMD(d);
           if (d < start || d > end) return <div className="h-20 rounded-xl bg-slate-50"></div>;
-          const entry = rec.entries?.[ymd] || {};
+          const entry = entries?.[ymd] || {};
           const zone2Min = parseInt(entry.zone2 || 0, 10);
           const zone5Min = parseInt(entry.zone5 || 0, 10);
           const totalMin = zone2Min + zone5Min;
@@ -381,7 +383,6 @@
           if (totalMin > 0 && delta >= 0) borderClr = "border-emerald-400";
           else if (totalMin > 0 && delta < 0) borderClr = "border-rose-300";
 
-          // Add zone 5 indicator
           const hasZone5 = zone5Min > 0;
 
           return (
@@ -399,67 +400,75 @@
         }
 
         return (
-          <div className="grid lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 space-y-6">
-              <Card>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h2 className="text-2xl font-semibold">Welkom {name}</h2>
-                    <p className="text-slate-600 text-sm">Zone 2 doel: {rec.level || "-"} {zone2Goal} min | Zone 5 doel: {CONFIG.zone5Goal} min</p>
+          <div className="max-w-4xl mx-auto space-y-6">
+            <Card>
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <div>
+                  <h2 className="text-2xl font-semibold">Welkom {CONFIG.name}</h2>
+                  <p className="text-slate-600 text-sm">Hard mode - 2500 min Zone 2 | 100 min Zone 5</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button className="px-3 py-2 rounded-xl border bg-blue-50 text-blue-700 hover:bg-blue-100" onClick={onExport}>
+                    Sync naar ander device
+                  </button>
+                  <button className="px-3 py-2 rounded-xl border" onClick={() => setLoggedIn(false)}>Uitloggen</button>
+                  <button className="px-3 py-2 rounded-xl border text-rose-700" onClick={resetEntries}>Reset</button>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {/* Zone 2 tracker */}
+                <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200">
+                  <div className="text-sm font-semibold text-emerald-900 mb-2">Zone 2+ Progress</div>
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <Stat label="Tot nu toe" value={zone2Total} sub="minuten" />
+                    <Stat label="Nog te gaan" value={zone2Remaining} sub="minuten" />
+                    <Stat label="Per dag nodig" value={zone2NeededPerDay} sub={remDays > 0 ? `${remDays} dagen` : "0 dagen"} />
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button className="px-3 py-2 rounded-xl border" onClick={() => setUser(null)}>Uitloggen</button>
-                    <button className="px-3 py-2 rounded-xl border text-rose-700" onClick={() => resetEntries(name)}>Reset deelnemer</button>
-                    <button className="px-3 py-2 rounded-xl border text-slate-700" onClick={onHardReset}>Volledige reset</button>
+                  <div className="mt-3 bg-white rounded-lg h-3 overflow-hidden">
+                    <div 
+                      className="h-full bg-emerald-500 transition-all"
+                      style={{ width: `${Math.min(100, (zone2Total / CONFIG.zone2Goal) * 100)}%` }}
+                    />
                   </div>
                 </div>
 
-                <div className="mt-4 space-y-4">
-                  {/* Zone 2 tracker */}
-                  <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200">
-                    <div className="text-sm font-semibold text-emerald-900 mb-2">Zone 2+ Progress</div>
-                    <div className="grid grid-cols-3 gap-3 text-center">
-                      <Stat label="Tot nu toe" value={zone2Total} sub="minuten" />
-                      <Stat label="Nog te gaan" value={zone2Remaining} sub="minuten" />
-                      <Stat label="Per dag nodig" value={zone2NeededPerDay} sub={remDays > 0 ? `${remDays} dagen` : "0 dagen"} />
-                    </div>
+                {/* Zone 5 tracker */}
+                <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
+                  <div className="text-sm font-semibold text-amber-900 mb-2">Zone 5 Progress</div>
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <Stat label="Tot nu toe" value={zone5Total} sub="minuten" />
+                    <Stat label="Nog te gaan" value={zone5Remaining} sub="minuten" />
+                    <Stat label="Per dag nodig" value={zone5NeededPerDay} sub={remDays > 0 ? `${remDays} dagen` : "0 dagen"} />
                   </div>
-
-                  {/* Zone 5 tracker */}
-                  <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
-                    <div className="text-sm font-semibold text-amber-900 mb-2">Zone 5 Progress</div>
-                    <div className="grid grid-cols-3 gap-3 text-center">
-                      <Stat label="Tot nu toe" value={zone5Total} sub="minuten" />
-                      <Stat label="Nog te gaan" value={zone5Remaining} sub="minuten" />
-                      <Stat label="Per dag nodig" value={zone5NeededPerDay} sub={remDays > 0 ? `${remDays} dagen` : "0 dagen"} />
-                    </div>
+                  <div className="mt-3 bg-white rounded-lg h-3 overflow-hidden">
+                    <div 
+                      className="h-full bg-amber-500 transition-all"
+                      style={{ width: `${Math.min(100, (zone5Total / CONFIG.zone5Goal) * 100)}%` }}
+                    />
                   </div>
                 </div>
+              </div>
 
-                {badges().length > 0 && (
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {badges().map(b => (
-                      <span key={b} className={classNames("px-3 py-1 rounded-full text-xs", b.includes("Zone 5") ? "bg-amber-600 text-white" : "bg-slate-900 text-white")}>{b}</span>
-                    ))}
-                  </div>
-                )}
-              </Card>
-
-              <Card>
-                <h3 className="text-xl font-semibold mb-2">April 2026</h3>
-                <p className="text-xs text-slate-600 mb-3">Gele achtergrond = Zone 5 training</p>
-                <div className="weekday-row text-xs text-slate-500 mb-2">
-                  {WEEKDAYS.map(w => <div key={w} className="text-center">{w}</div>)}
+              {badges().length > 0 && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {badges().map(b => (
+                    <span key={b} className={classNames("px-3 py-1 rounded-full text-xs", b.includes("Zone 5") ? "bg-amber-600 text-white" : "bg-slate-900 text-white")}>{b}</span>
+                  ))}
                 </div>
-                <div className="month-grid">
-                  {aprCells.map((d, i) => <div key={i}>{dayCell(d)}</div>)}
-                </div>
-              </Card>
-            </div>
+              )}
+            </Card>
 
-            <div className="space-y-6">
-              <Leaderboard leaderboard={leaderboard} />
-            </div>
+            <Card>
+              <h3 className="text-xl font-semibold mb-2">April 2026</h3>
+              <p className="text-xs text-slate-600 mb-3">Gele achtergrond = Zone 5 training</p>
+              <div className="weekday-row text-xs text-slate-500 mb-2">
+                {WEEKDAYS.map(w => <div key={w} className="text-center">{w}</div>)}
+              </div>
+              <div className="month-grid">
+                {aprCells.map((d, i) => <div key={i}>{dayCell(d)}</div>)}
+              </div>
+            </Card>
           </div>
         );
       }
@@ -474,24 +483,42 @@
         </div>
       );
 
-      const Leaderboard = ({ leaderboard }) => (
-        <Card>
-          <h3 className="text-xl font-semibold mb-3 text-center">Leaderboard</h3>
-          <div className="space-y-3">
-            {leaderboard.map(r => (
-              <div key={r.name} className="border-b border-slate-100 pb-2">
-                <div className="flex justify-between text-sm font-semibold mb-1">
-                  <div>{r.name}</div>
-                  <div>{r.pct}%</div>
-                </div>
-                <div className="text-xs text-slate-600">
-                  Z2+: {r.sum}/{r.goal} | Z5: {r.zone5}/100 ({r.z5pct}%)
-                </div>
+      // ================== EXPORT MODAL ==================
+      function ExportModal({ url, onClose }) {
+        const [copied, setCopied] = React.useState(false);
+
+        function copyUrl() {
+          navigator.clipboard.writeText(url).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          });
+        }
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-slate-200 p-6">
+              <h3 className="text-xl font-semibold mb-3">Sync naar ander device</h3>
+              <p className="text-sm text-slate-600 mb-4">
+                Kopieer deze URL en open hem op je andere device. Je data wordt automatisch geladen.
+              </p>
+              
+              <div className="bg-slate-50 rounded-xl p-3 mb-4 break-all text-sm font-mono">
+                {url}
               </div>
-            ))}
+
+              <div className="flex justify-end gap-2">
+                <button className="px-4 py-2 rounded-xl border" onClick={onClose}>Sluiten</button>
+                <button 
+                  className="px-4 py-2 rounded-xl bg-slate-900 text-white"
+                  onClick={copyUrl}
+                >
+                  {copied ? "Gekopieerd! ✓" : "Kopieer URL"}
+                </button>
+              </div>
+            </div>
           </div>
-        </Card>
-      );
+        );
+      }
 
       // ================== MODAL MET TWEE ZONES ==================
       function MinutesModal({ dateYMD, initialZone2, initialZone5, onCancel, onSave }) {
