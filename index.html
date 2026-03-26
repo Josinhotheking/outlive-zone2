@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Outlive Zone 2 Challenge</title>
+    <title>Zone 2 Training April 2026</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -28,13 +28,13 @@
       };
 
       const NOTE_OPTIONS = [
-        "Felt strong 💪",
-        "Crushed it 🔥",
-        "Tough session 😤",
-        "Legs tired 🦵",
-        "Easy pace 😌",
-        "Struggled 😮‍💨",
-        "Perfect flow 🌊",
+        "Voelde me sterk 💪",
+        "Verpletterd 🔥",
+        "Zware sessie 😤",
+        "Benen moe 🦵",
+        "Relaxed tempo 😌",
+        "Moest knokken 😮‍💨",
+        "Perfecte flow 🌊",
         "Custom..."
       ];
 
@@ -366,8 +366,8 @@
       // ================== UI COMPONENTS ==================
       const Header = () => (
         <div className="mb-8 text-center">
-          <div className="text-xs tracking-widest text-slate-600">Zone 2 + Zone 5 + Strength</div>
-          <h1 className="text-4xl md:text-5xl font-semibold tracking-tight mt-1">Outlive April 2026</h1>
+          <div className="text-xs tracking-widest text-slate-600">Zone 2 + Zone 5 + Kracht</div>
+          <h1 className="text-4xl md:text-5xl font-semibold tracking-tight mt-1">April 2026</h1>
           <p className="text-slate-600 mt-2">1250 min Z2 • 120 min Z5 • 9 krachtsessies</p>
         </div>
       );
@@ -408,7 +408,7 @@
               </button>
 
               <div className="mt-6 bg-slate-50 rounded-xl p-4">
-                <div className="text-sm font-semibold mb-2">Challenge Goals:</div>
+                <div className="text-sm font-semibold mb-2">Doelen:</div>
                 <div className="text-sm text-slate-700">
                   • Zone 2+: <strong>1250 minuten</strong><br/>
                   • Zone 5: <strong>120 minuten</strong><br/>
@@ -423,13 +423,14 @@
             </div>
 
             <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-200">
-              <h3 className="text-xl font-semibold text-slate-900 mb-3">April Challenge - Peter Attia Protocol</h3>
+              <h3 className="text-xl font-semibold text-slate-900 mb-3">April Challenge</h3>
               <p className="text-sm leading-relaxed text-slate-700 mb-3">
-                Train alle vier Attia's pillars: Zone 2 voor aerobe base, Zone 5 voor VO2 max, en kracht voor functionele sterkte.
+                Deze maand train je alle drie de systemen. Zone 2 bouwt je aerobe base. Zone 5 verhoogt je VO2 max. 
+                Kracht houdt je functioneel sterk. 
               </p>
               <p className="text-sm leading-relaxed text-slate-700">
-                Zone 5 minuten tellen mee voor Zone 2 total. 2x kracht per week houdt je functioneel sterk. 
-                Every minute counts. Stay hard.
+                Zone 5 minuten tellen mee voor je Zone 2 totaal. 2x kracht per week houdt je functioneel sterk. 
+                Elke minuut telt. Stay hard.
               </p>
             </div>
           </div>
@@ -482,9 +483,9 @@
           if (strengthTotal >= 4) arr.push("4 krachtsessies");
           if (strengthTotal >= 9) arr.push("9 krachtsessies ✓");
           
-          if (streaks.current >= 7) arr.push("🔥 7-day warrior");
-          if (streaks.current >= 14) arr.push("🔥 14-day beast");
-          if (streaks.current >= 21) arr.push("🔥 21-day legend");
+          if (streaks.current >= 7) arr.push("🔥 7-dagen warrior");
+          if (streaks.current >= 14) arr.push("🔥 14-dagen beast");
+          if (streaks.current >= 21) arr.push("🔥 21-dagen legend");
           
           return arr;
         }
@@ -550,13 +551,13 @@
               <div className="mb-4 bg-gradient-to-r from-orange-50 to-red-50 rounded-xl p-4 border border-orange-200">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-sm text-slate-600">Current Streak</div>
+                    <div className="text-sm text-slate-600">Huidige Streak</div>
                     <div className="text-3xl font-bold text-orange-600">
                       {streaks.current === 0 ? "🔴" : "🔥"} {streaks.current} {streaks.current === 1 ? "dag" : "dagen"}
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-sm text-slate-600">Longest Streak</div>
+                    <div className="text-sm text-slate-600">Langste Streak</div>
                     <div className="text-2xl font-semibold text-slate-700">
                       🏆 {streaks.longest} {streaks.longest === 1 ? "dag" : "dagen"}
                     </div>
@@ -630,10 +631,10 @@
             {/* Predictions */}
             {predictions && (
               <Card>
-                <h3 className="text-lg font-semibold mb-3">📊 Predictions & Pace</h3>
+                <h3 className="text-lg font-semibold mb-3">📊 Voorspellingen & Tempo</h3>
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="bg-emerald-50 rounded-lg p-3">
-                    <div className="text-xs text-slate-600">Zone 2 Pace</div>
+                    <div className="text-xs text-slate-600">Zone 2 Tempo</div>
                     <div className="text-lg font-semibold">{predictions.zone2AvgPerDay} min/dag</div>
                     {predictions.zone2CompletionDate && (
                       <div className="text-xs text-slate-600 mt-1">
@@ -647,7 +648,7 @@
                   </div>
                   
                   <div className="bg-amber-50 rounded-lg p-3">
-                    <div className="text-xs text-slate-600">Zone 5 Pace</div>
+                    <div className="text-xs text-slate-600">Zone 5 Tempo</div>
                     <div className="text-lg font-semibold">{predictions.zone5AvgPerDay} min/dag</div>
                     {predictions.zone5CompletionDate && (
                       <div className="text-xs text-slate-600 mt-1">
@@ -665,20 +666,20 @@
 
             {/* Session Records */}
             <Card>
-              <h3 className="text-lg font-semibold mb-3">🏅 Personal Records</h3>
+              <h3 className="text-lg font-semibold mb-3">🏅 Persoonlijke Records</h3>
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div className="bg-slate-50 rounded-lg p-3">
-                  <div className="text-xs text-slate-600">Longest Session</div>
+                  <div className="text-xs text-slate-600">Langste Sessie</div>
                   <div className="text-2xl font-bold text-slate-900">{records.longestSession}</div>
                   <div className="text-xs text-slate-600">minuten</div>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-3">
-                  <div className="text-xs text-slate-600">Most Zone 5</div>
+                  <div className="text-xs text-slate-600">Meeste Zone 5</div>
                   <div className="text-2xl font-bold text-amber-600">{records.mostZone5}</div>
                   <div className="text-xs text-slate-600">in één dag</div>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-3">
-                  <div className="text-xs text-slate-600">Best Week</div>
+                  <div className="text-xs text-slate-600">Beste Week</div>
                   <div className="text-2xl font-bold text-slate-900">{records.bestWeek}</div>
                   <div className="text-xs text-slate-600">7 dagen</div>
                 </div>
@@ -687,7 +688,7 @@
 
             <Card>
               <h3 className="text-xl font-semibold mb-2">April 2026</h3>
-              <p className="text-xs text-slate-600 mb-3">Geel = Zone 5 | 💪 = Kracht | 💬 = Note</p>
+              <p className="text-xs text-slate-600 mb-3">Geel = Zone 5 | 💪 = Kracht | 💬 = Notitie</p>
               <div className="weekday-row text-xs text-slate-500 mb-2">
                 {WEEKDAYS.map(w => <div key={w} className="text-center">{w}</div>)}
               </div>
@@ -862,13 +863,13 @@
 
               {/* Note dropdown */}
               <div className="mt-6">
-                <label className="block text-sm font-semibold text-slate-900">Session note (optioneel)</label>
+                <label className="block text-sm font-semibold text-slate-900">Sessie notitie (optioneel)</label>
                 <select 
                   className="mt-2 w-full border rounded-lg px-3 py-2"
                   value={noteSelection}
                   onChange={e => handleNoteChange(e.target.value)}
                 >
-                  <option value="">Geen note</option>
+                  <option value="">Geen notitie</option>
                   {NOTE_OPTIONS.map(opt => (
                     <option key={opt} value={opt}>{opt}</option>
                   ))}
@@ -881,7 +882,7 @@
                   <input
                     type="text"
                     className="w-full border rounded-lg px-3 py-2"
-                    placeholder="Typ je eigen note..."
+                    placeholder="Typ je eigen notitie..."
                     value={customNote}
                     onChange={e => setCustomNote(e.target.value)}
                     maxLength={50}
